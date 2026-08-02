@@ -33,17 +33,8 @@ const displayGenres = ['剧情', '科幻', '悬疑', '动画', '喜剧', '恐怖
 
 export const calculateResult = (session: QuizSession): QuizResult => {
   const basePoints = session.answers.reduce((sum, answer) => sum + answer.points, 0)
-  const bonus = Math.max(0, session.bestStreak - 2) * 0.4
-  const askedGenres = new Set(session.movies.flatMap((movie) => movie.genres))
-  const verifiedGenres = new Set(
-    session.answers
-      .filter((answer) => answer.verified)
-      .flatMap((answer) => session.movies.find((movie) => movie.id === answer.movieId)?.genres ?? []),
-  )
-  const coverage = askedGenres.size ? verifiedGenres.size / askedGenres.size : 0
-  const score = Math.min(100, Math.round((basePoints / (session.mode * 3)) * 90 + coverage * 10 + bonus))
+  const score = Math.round((basePoints / session.mode) * 100)
   const recognizedCount = session.answers.filter((answer) => answer.recognized).length
-  const verifiedCount = session.answers.filter((answer) => answer.verified).length
 
   const categoryScores: CategoryScore[] = displayGenres.map((label) => {
     const relevant = session.movies.filter((movie) => movie.genres.includes(label))
@@ -52,8 +43,8 @@ export const calculateResult = (session: QuizSession): QuizResult => {
     const earned = records.reduce((sum, answer) => sum + answer.points, 0)
     return {
       label,
-      score: relevant.length ? Math.round((earned / (relevant.length * 3)) * 100) : 0,
-      correct: records.filter((answer) => answer.verified).length,
+      score: relevant.length ? Math.round((earned / relevant.length) * 100) : 0,
+      correct: records.filter((answer) => answer.recognized).length,
       total: relevant.length,
     }
   })
@@ -61,10 +52,10 @@ export const calculateResult = (session: QuizSession): QuizResult => {
   return {
     score,
     recognizedCount,
-    verifiedCount,
-    fuzzyCount: recognizedCount - verifiedCount,
+    verifiedCount: recognizedCount,
+    fuzzyCount: session.mode - recognizedCount,
     bestStreak: session.bestStreak,
-    accuracy: Math.round((verifiedCount / session.mode) * 100),
+    accuracy: Math.round((recognizedCount / session.mode) * 100),
     category: session.category,
     mode: session.mode,
     categoryScores,
@@ -78,13 +69,11 @@ export const primaryGenre = (movie: Movie) => displayGenres.find((genre) => movi
 export const makeAnswer = (
   movie: Movie,
   recognized: boolean,
-  verified: boolean,
-  skippedVerification: boolean,
 ): AnswerRecord => ({
   movieId: movie.id,
   recognized,
-  verified,
-  skippedVerification,
+  verified: recognized,
+  skippedVerification: false,
   genre: primaryGenre(movie),
-  points: (recognized ? 1 : 0) + (verified ? 2 : 0),
+  points: recognized ? 1 : 0,
 })

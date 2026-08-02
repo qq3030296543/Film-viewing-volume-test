@@ -1,7 +1,7 @@
 import type { Movie } from '../types'
 
 // 海报链接使用 TMDB 公共图片 CDN；应用不依赖 API，图片失效时会自动显示本地电影感占位视觉。
-export const movies: Movie[] = [
+const movieSeed: Movie[] = [
   {
     id: 'farewell-my-concubine', title: '霸王别姬', originalTitle: 'Farewell My Concubine', year: 1993, region: '华语',
     genres: ['剧情', '文艺经典'], director: '陈凯歌', imageUrl: 'https://image.tmdb.org/t/p/w780/nOAJpUt0OjlY3DqZ08Y3TtEDLGP.jpg', imageAlt: '《霸王别姬》电影海报', accent: ['#9c221d', '#d6a65d'],
@@ -201,3 +201,18 @@ export const movies: Movie[] = [
     question: '艾佛特留给多多的最后一卷胶片是什么内容？', options: ['被剪掉的接吻镜头合集', '小镇新闻纪录', '多多的童年录像', '未完成的电影'], answer: '被剪掉的接吻镜头合集', explanation: '那些曾被神父要求剪掉的吻戏被艾佛特保存，并剪成最后的礼物。', spoiler: true, difficulty: '进阶', recommendation: '献给电影院、成长和告别的深情情书。',
   },
 ]
+
+// 这些条目的旧 TMDB 图片已经失效；先从离线题库排除，实时题库仍会从 TMDB 获取同类影片。
+const unavailablePosterIds = new Set(['to-live', 'havoc-in-heaven', 'the-ring'])
+const baseUrl = import.meta.env.BASE_URL
+
+export const movies: Movie[] = movieSeed
+  .filter((movie) => !unavailablePosterIds.has(movie.id))
+  .map((movie) => ({
+    ...movie,
+    source: 'local',
+    imageUrl: `${baseUrl}posters/${movie.id}.jpg`,
+    imageUrls: [movie.imageUrl],
+    // 不把片名写入无障碍文本，避免读屏或图片提示提前泄题。
+    imageAlt: '待识别的电影海报',
+  }))

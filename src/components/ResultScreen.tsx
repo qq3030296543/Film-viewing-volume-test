@@ -69,7 +69,7 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
     ctx.fillText('/ 100', 600, 885)
     ctx.fillStyle = '#f4efe6'
     ctx.font = '34px sans-serif'
-    ctx.fillText(`识别 ${result.recognizedCount} 部  ·  验证 ${result.verifiedCount} 部  ·  最长连胜 ${result.bestStreak}`, 110, 1050)
+    ctx.fillText(`猜中 ${result.recognizedCount} 部  ·  答错 ${result.fuzzyCount} 部  ·  最长连胜 ${result.bestStreak}`, 110, 1050)
     ctx.fillStyle = '#9d998f'
     ctx.font = '30px sans-serif'
     ctx.fillText(`擅长类型：${strongest?.label ?? '综合'}  ·  超越 ${percentile}% 玩家`, 110, 1120)
@@ -102,11 +102,11 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
 
       <section className="result-grid">
         <div className="result-card metrics-card">
-          <div className="card-heading"><span className="section-index">01 / 放映数据</span><h2>你的观影记忆</h2></div>
+          <div className="card-heading"><span className="section-index">01 / 放映数据</span><h2>你的识片成绩</h2></div>
           <div className="metric-grid">
-            <div><span>正确识别</span><strong>{result.recognizedCount}<small> / {result.mode}</small></strong></div>
-            <div><span>真正看过</span><strong>{result.verifiedCount}<small> 部</small></strong></div>
-            <div><span>印象模糊</span><strong>{result.fuzzyCount}<small> 部</small></strong></div>
+            <div><span>正确猜中</span><strong>{result.recognizedCount}<small> / {result.mode}</small></strong></div>
+            <div><span>答错影片</span><strong>{result.fuzzyCount}<small> 部</small></strong></div>
+            <div><span>识别正确率</span><strong>{result.accuracy}<small> %</small></strong></div>
             <div><span>最长连胜</span><strong>{result.bestStreak}<small> 次</small></strong></div>
           </div>
         </div>
@@ -140,7 +140,7 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
           <button className="modal-close" onClick={() => setShareOpen(false)} aria-label="关闭">×</button>
           <div className="share-preview" ref={shareCardRef} style={{ '--rank-color': rank.color } as React.CSSProperties}>
             <span>光影鉴赏局 · CINE MEMORY</span><b>{rank.icon}</b><small>我的阅片段位</small><h2>{rank.name}</h2><strong>{result.score}<i>/100</i></strong>
-            <p>识别 {result.recognizedCount} · 验证 {result.verifiedCount} · 连胜 {result.bestStreak}</p><em>看过不算，记得才算。</em>
+            <p>猜中 {result.recognizedCount} · 答错 {result.fuzzyCount} · 连胜 {result.bestStreak}</p><em>一张画面，唤醒一段电影记忆。</em>
           </div>
           <div className="share-buttons"><button className="primary-button" onClick={downloadCard}>保存为图片</button><button className="secondary-button" onClick={share}>分享成绩</button></div>
         </div>

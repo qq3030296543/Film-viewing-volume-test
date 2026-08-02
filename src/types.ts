@@ -23,6 +23,7 @@ export interface Movie {
   genres: string[]
   director: string
   imageUrl: string
+  imageUrls?: string[]
   imageAlt: string
   accent: [string, string]
   recognitionDistractors: string[]
