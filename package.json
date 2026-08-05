@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/clean-dist.mjs && tsc -b && vite build",
+    "build:netlify": "node scripts/clean-dist.mjs dist && node scripts/clean-dist.mjs release && tsc -b && vite build --outDir release",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false"
   },
@@ -14,6 +15,7 @@
     "react-dom": "19.1.1"
   },
   "devDependencies": {
+    "@netlify/functions": "^5.3.0",
     "@types/react": "19.1.16",
     "@types/react-dom": "19.1.9",
     "@vitejs/plugin-react": "5.0.4",

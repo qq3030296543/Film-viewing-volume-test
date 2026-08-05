@@ -1,6 +1,10 @@
+import { useEffect, useMemo, useState } from 'react'
 import { movies } from '../data/movies'
+import { createTmdbHomePosterPool, readTmdbCredential, type HomePosterItem } from '../services/tmdb'
 import type { Category, QuizResult, TestMode } from '../types'
 import { categories } from '../utils/quiz'
+import { homePosterCandidates, shuffleItems } from '../utils/posters'
+import { ResilientPosterImage } from './ResilientPosterImage'
 
 interface Props {
   mode: TestMode
@@ -14,85 +18,179 @@ interface Props {
   onResume: () => void
 }
 
-const modes: { value: TestMode; label: string; note: string; duration: string }[] = [
-  { value: 10, label: '快速试映', note: '10 部电影', duration: '约 2 分钟' },
-  { value: 20, label: '标准场', note: '20 部电影', duration: '约 5 分钟' },
-  { value: 30, label: '导演剪辑版', note: '30 部电影', duration: '约 8 分钟' },
+const modes: { value: TestMode; label: string; note: string }[] = [
+  { value: 10, label: '快速', note: '10 部电影' },
+  { value: 20, label: '标准', note: '20 部电影' },
+  { value: 30, label: '深度', note: '30 部电影' },
 ]
 
-const wallMovies = movies.slice(0, 12)
+const POSTER_CACHE_KEY = 'cine-home-posters-v1'
+const POSTER_CACHE_MAX_AGE = 12 * 60 * 60 * 1_000
 
-export function HomeScreen({ mode, category, bestResult, historyCount, hasActiveQuiz, onModeChange, onCategoryChange, onStart, onResume }: Props) {
+interface PosterCache {
+  savedAt: number
+  items: HomePosterItem[]
+}
+
+const readPosterCache = (): PosterCache | null => {
+  try {
+    const value = localStorage.getItem(POSTER_CACHE_KEY)
+    if (!value) return null
+    const cache = JSON.parse(value) as PosterCache
+    return Array.isArray(cache.items) && cache.items.length >= 18 ? cache : null
+  } catch {
+    return null
+  }
+}
+
+const makeLocalPosterPool = (): HomePosterItem[] => shuffleItems(movies)
+  .filter((movie) => movie.imageUrl)
+  .slice(0, 24)
+  .map((movie) => ({ id: movie.id, imageUrls: homePosterCandidates(movie) }))
+
+const makeInitialPosterPool = () => {
+  const cached = readPosterCache()
+  return cached ? shuffleItems(cached.items).slice(0, 24) : makeLocalPosterPool()
+}
+
+export function HomeScreen({
+  mode,
+  category,
+  bestResult,
+  historyCount,
+  hasActiveQuiz,
+  onModeChange,
+  onCategoryChange,
+  onStart,
+  onResume,
+}: Props) {
+  const [posterPool] = useState<HomePosterItem[]>(makeInitialPosterPool)
+
+  useEffect(() => {
+    const credential = readTmdbCredential()
+    if (!credential) return undefined
+
+    const cached = readPosterCache()
+    if (cached && Date.now() - cached.savedAt < POSTER_CACHE_MAX_AGE) return undefined
+
+    // 首屏不再二次换图；网络空闲后仅更新下次访问使用的实时海报缓存。
+    const refreshTimer = window.setTimeout(() => {
+      void createTmdbHomePosterPool(30, credential)
+        .then((items) => {
+          if (items.length >= 18) {
+            localStorage.setItem(POSTER_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items } satisfies PosterCache))
+          }
+        })
+        .catch(() => {
+          // 当前页面已经有随机本地海报，后台刷新失败无需打断用户。
+        })
+    }, 6_000)
+
+    return () => window.clearTimeout(refreshTimer)
+  }, [])
+
+  const posterRows = useMemo(
+    () => [0, 1, 2].map((row) => posterPool.filter((_, index) => index % 3 === row)),
+    [posterPool],
+  )
+  const emergencyPool = useMemo(() => posterPool.flatMap((item) => item.imageUrls), [posterPool])
+
   return (
-    <main className="home-shell cyber-home">
-      <div className="cyber-grid" aria-hidden="true" />
-      <div className="cyber-scanline" aria-hidden="true" />
-      <div className="cyber-poster-wall" aria-hidden="true">
-        {wallMovies.map((movie, index) => (
-          <div className={`wall-poster wall-poster-${index + 1}`} key={movie.id}>
-            <img src={movie.imageUrl} alt="" onError={(event) => { event.currentTarget.parentElement?.classList.add('image-missing') }} />
+    <main className="cinematic-home" id="home">
+      <div className="poster-flow" aria-hidden="true">
+        {posterRows.map((row, rowIndex) => (
+          <div className={`poster-flow-row poster-flow-row-${rowIndex + 1}`} key={rowIndex}>
+            <div className="poster-flow-track">
+              {[0, 1].map((copyIndex) => (
+                <div className="poster-flow-set" key={copyIndex}>
+                  {row.map((poster, posterIndex) => {
+                    const emergencyOffset = (rowIndex * 8 + posterIndex + 1) % Math.max(emergencyPool.length, 1)
+                    const emergencyCandidates = [
+                      ...emergencyPool.slice(emergencyOffset),
+                      ...emergencyPool.slice(0, emergencyOffset),
+                    ].slice(0, 18)
+                    return (
+                      <figure className="poster-flow-card" key={`${poster.id}-${copyIndex}`}>
+                        <ResilientPosterImage
+                          sources={[...poster.imageUrls, ...emergencyCandidates]}
+                          alt=""
+                          loading="eager"
+                          timeoutMs={2_200}
+                          fetchPriority={rowIndex === 0 && posterIndex < 4 ? 'high' : 'low'}
+                        />
+                      </figure>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
 
-      <section className="hero">
-        <div className="hero-kicker"><span className="live-dot" /> CINE MEMORY // ONLINE</div>
-        <h1 className="cyber-title" aria-label="光影鉴赏局">
-          <span data-text="光影">光影</span>
-          <em data-text="鉴赏局">鉴赏局</em>
+      <nav className="cinematic-nav" aria-label="主导航">
+        <a className="cinematic-logo" href="#home" aria-label="光影鉴赏局首页">
+          光影鉴赏局<sup>®</sup>
+        </a>
+        <div className="cinematic-nav-links">
+          <a className="active" href="#home">首页</a>
+          <a href="#test-config">阅历测试</a>
+          {bestResult && <span>最高 {bestResult.score} 分</span>}
+        </div>
+        {hasActiveQuiz ? (
+          <button className="liquid-glass nav-journey-button" onClick={onResume}>继续测试</button>
+        ) : (
+          <a className="liquid-glass nav-journey-button" href="#test-config">选择场次</a>
+        )}
+      </nav>
+
+      <section className="cinematic-hero" aria-labelledby="cinematic-title">
+        <p className="cinematic-eyebrow animate-fade-rise">CINEMA MEMORY ASSESSMENT · 2026</p>
+        <h1 id="cinematic-title" className="animate-fade-rise">
+          一帧光影，照见你的
+          <em>阅片阅历。</em>
         </h1>
-        <p className="hero-copy">一张画面，四个片名。<br /><strong>看看你的电影记忆能走多远。</strong></p>
-        <div className="hero-stats" aria-label="测试信息">
-          <div><strong>01</strong><span>单阶段识片</span></div>
-          <div><strong>10</strong><span>电影类型</span></div>
-          <div><strong>∞</strong><span>实时片库</span></div>
-        </div>
+        <p className="cinematic-copy animate-fade-rise-delay">
+          从一张不透露片名的海报开始，凭记忆辨认电影，穿越类型、年代与地域，
+          最终获得只属于你的阅片段位。
+        </p>
+        <button className="liquid-glass cinematic-cta animate-fade-rise-delay-2" onClick={onStart}>
+          <span>{hasActiveQuiz ? '重新开始测试' : '开始阅历测试'}</span>
+          <span aria-hidden="true">→</span>
+        </button>
+        <p className="cinematic-motto animate-fade-rise-delay-2">看过不算，记得才算。</p>
       </section>
 
-      <section className="ticket-panel" aria-labelledby="config-title">
-        <div className="ticket-top">
-          <div>
-            <span className="section-index">01 / TEST CONFIG</span>
-            <h2 id="config-title">选择你的测试场次</h2>
-          </div>
-          <span className="ticket-code">CINE—MEMORY<br />READY // 01</span>
+      <section className="liquid-glass cinematic-config" id="test-config" aria-label="测试设置">
+        <div className="config-heading"><span>TEST / 01</span><strong>选择测试场次</strong></div>
+
+        <div className="cinematic-modes" aria-label="测试长度">
+          {modes.map((item) => (
+            <button
+              key={item.value}
+              className={mode === item.value ? 'selected' : ''}
+              onClick={() => onModeChange(item.value)}
+              aria-pressed={mode === item.value}
+            >
+              <strong>{item.label}</strong><small>{item.note}</small>
+            </button>
+          ))}
         </div>
 
-        <div className="config-block">
-          <label className="config-label">测试长度</label>
-          <div className="mode-grid">
-            {modes.map((item) => (
-              <button className={`mode-card ${mode === item.value ? 'selected' : ''}`} key={item.value} onClick={() => onModeChange(item.value)} aria-pressed={mode === item.value}>
-                <span className="mode-radio" />
-                <strong>{item.label}</strong>
-                <span>{item.note}</span>
-                <small>{item.duration}</small>
-              </button>
-            ))}
-          </div>
+        <div className="cinematic-category">
+          <label htmlFor="movie-category">电影类型</label>
+          <select id="movie-category" value={category} onChange={(event) => onCategoryChange(event.target.value as Category)}>
+            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
         </div>
 
-        <div className="config-block">
-          <label className="config-label">偏好片单</label>
-          <div className="category-list">
-            {categories.map((item) => (
-              <button key={item} className={category === item ? 'active' : ''} onClick={() => onCategoryChange(item)} aria-pressed={category === item}>{item}</button>
-            ))}
-          </div>
-        </div>
-
-        {hasActiveQuiz && <div className="resume-notice"><span>检测到未完成测试</span><button onClick={onResume}>继续上次进度 →</button></div>}
-
-        <div className="start-row">
-          <button className="primary-button start-button" onClick={onStart}><span>{hasActiveQuiz ? '重新开始测试' : '开始测试'}</span><span aria-hidden="true">→</span></button>
-          <p>无需登录 · 无需输入 API · 成绩仅保存在当前浏览器</p>
-        </div>
+        <button className="config-start-button" onClick={onStart}>进入测试 <span aria-hidden="true">→</span></button>
       </section>
 
-      <aside className="best-card">
-        <span>PERSONAL RECORD</span>
-        {bestResult ? <p>历史最佳 {bestResult.score} 分 · 已完成 {historyCount} 场</p> : <p>完成首场测试后点亮记录</p>}
-      </aside>
+      <footer className="cinematic-footer">
+        <span>TMDB 实时片库 · 无需登录</span>
+        <span>{historyCount ? `已完成 ${historyCount} 场测试` : '你的银幕档案尚未开启'}</span>
+      </footer>
     </main>
   )
 }

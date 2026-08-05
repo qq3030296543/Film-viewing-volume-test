@@ -1,5 +1,11 @@
 node_modules
 dist
+release
 .npm-cache
-.env.local
+.env
+.env.*
+!.env.example
 *.log
+.netlify
+design-qa-assets
+design-qa.md

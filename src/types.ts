@@ -42,6 +42,7 @@ export interface Movie {
   voteCount?: number
   runtime?: number
   lastSyncedAt?: number
+  textlessArtwork?: boolean
 }
 
 export interface AnswerRecord {

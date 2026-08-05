@@ -42,18 +42,20 @@ npm run preview
 
 ## TMDB 实时数据库
 
-TMDB 凭证只在开发或部署阶段配置，普通用户进入网站后不需要填写 API。复制 `.env.example` 为 `.env.local`，填写 v3 API Key 或 v4 Read Access Token 中的一个：
+海外生产版本通过 `netlify/functions/tmdb.mts` 代理 TMDB 请求，浏览器和公开源码中不包含生产 API Key。普通用户打开网站后不需要填写 API。
+
+在 Netlify 项目的 Environment Variables 中创建秘密环境变量 `TMDB_API_KEY`，然后重新部署。套餐支持时可把作用域限制为 Functions；免费版只能选择 All scopes 时也可以安全使用，因为变量不带 `VITE_` 前缀，前端代码不会读取它。密钥由 Function 在服务端读取，不会进入前端构建产物。
+
+本地开发时可以复制 `.env.example` 为 `.env.local`，填写 v3 API Key：
 
 ```env
 VITE_TMDB_API_KEY=你的密钥
-# 或
-VITE_TMDB_READ_TOKEN=你的ReadAccessToken
 ```
 
-部署到 Vercel、Cloudflare Pages 或其他平台时，在平台的 Environment Variables 设置中添加同名变量，然后重新部署。不要把 `.env.local` 提交到 GitHub。
+不要把 `.env.local` 提交到 GitHub。部署到其他平台时，需要实现等价的 `/api/tmdb/*` 服务端代理，或在本地开发环境中使用对应的临时凭证。
 
 配置成功后，每次开始测试都会通过 TMDB 获取实时片单、中文电影信息、评分和多张备用图片。答题图片优先选择无语言标记、通常不带片名的电影剧照，并在进入测试前验证图片可用性；请求失败或没有配置凭证时，网站会自动切换到包含 30 张内置海报的本地题库。
 
-注意：Vite 的 `VITE_` 环境变量会进入前端构建产物。如果网站公开发布且需要严格保护凭证，建议后续通过服务端或 Serverless Function 代理 TMDB 请求。
+生产环境的 TMDB Key 仅保存在 Netlify 的秘密环境变量中。`VITE_` 变量只用于本地开发；不要在公开生产构建中配置带密钥的 `VITE_` 变量，因为它们会进入浏览器构建产物。
 
 本产品使用 TMDB API，但不受 TMDB 认可或认证。TMDB 数据和图片遵循其 API 使用条款。
