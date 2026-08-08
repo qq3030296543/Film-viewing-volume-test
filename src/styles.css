@@ -973,19 +973,19 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   pointer-events: none;
-  background: rgba(0, 13, 21, .91);
+  background: rgba(0, 13, 21, .58);
 }
 
 .quiz-ambient-posters {
   position: fixed;
   inset: -12vh -5vw;
-  z-index: -2;
+  z-index: 0;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 18px;
-  opacity: .16;
+  opacity: .55;
   transform: rotate(-5deg) scale(1.08);
   filter: saturate(.42) contrast(1.05);
   pointer-events: none;
@@ -1007,14 +1007,14 @@ body::before {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(2px) brightness(.42);
+  filter: blur(.35px) brightness(.62) saturate(.9);
   transform: scale(1.08);
 }
 
 .quiz-film-light {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   pointer-events: none;
   background: linear-gradient(108deg, transparent 0 35%, rgba(190,239,255,.055) 49%, transparent 63%);
   animation: quizLightSweep 14s ease-in-out infinite alternate;
@@ -1246,7 +1246,7 @@ body::before {
 
 @media (max-width: 760px) {
   .cinema-quiz { overflow-y: auto; }
-  .quiz-ambient-posters { grid-template-columns: repeat(3, 1fr); opacity: .12; inset: -5vh -35vw; }
+  .quiz-ambient-posters { grid-template-columns: repeat(3, 1fr); opacity: .42; inset: -5vh -35vw; }
   .quiz-ambient-posters figure:nth-child(n+4) { display: none; }
   .cinema-quiz .quiz-header { min-height: 78px; padding: 16px; grid-template-columns: 1fr auto; gap: 14px; }
   .cinema-quiz .brand-button { font-size: 22px; }
