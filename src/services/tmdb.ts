@@ -5,6 +5,11 @@ const TMDB_PROXY_BASE = '/api/tmdb'
 const PROXY_CREDENTIAL = 'netlify-proxy'
 const REQUEST_TIMEOUT_MS = 5_000
 const DISCOVERY_CACHE_MS = 5 * 60 * 1_000
+const DOCUMENTARY_GENRE_ID = 99
+const MUSIC_GENRE_ID = 10402
+const TV_MOVIE_GENRE_ID = 10770
+const NARRATIVE_GENRE_IDS = new Set([12, 14, 16, 18, 27, 28, 35, 36, 37, 53, 80, 878, 9648, 10749, 10751, 10752])
+const NON_FEATURE_PATTERN = /演唱会|巡回演出|音乐现场|现场实录|演出实录|音乐会|粉丝见面会|concert|world tour|stadium tour|live at|live in|on stage|the tour/i
 
 interface TmdbListMovie {
   id: number
@@ -113,7 +118,8 @@ const levelProfiles: Record<PlayerLevel, {
 }> = {
   入门菜鸟: { sortBy: 'popularity.desc', minVotes: 2_500, minRating: 5.5, maxPage: 6 },
   略知一二: { sortBy: 'vote_average.desc', minVotes: 500, maxVotes: 8_000, minRating: 6.1, maxPopularity: 180, maxPage: 14 },
-  阅片无数: { sortBy: 'vote_average.desc', minVotes: 60, maxVotes: 2_200, minRating: 6.5, maxPopularity: 80, maxPage: 30 },
+  // 困难模式靠相似干扰项制造难度，不靠低分、极冷门或非院线内容为难用户。
+  阅片无数: { sortBy: 'vote_average.desc', minVotes: 350, minRating: 7, maxPage: 22 },
 }
 
 function discoverParams(
@@ -131,10 +137,17 @@ function discoverParams(
     sort_by: category === '文艺经典' ? 'vote_average.desc' : profile.sortBy,
     'vote_count.gte': category === '文艺经典' ? Math.min(profile.minVotes, 400) : profile.minVotes,
     'vote_average.gte': profile.minRating,
+    without_genres: `${DOCUMENTARY_GENRE_ID},${TV_MOVIE_GENRE_ID}`,
+  }
+  if (playerLevel === '阅片无数') {
+    common['primary_release_date.lte'] = `${new Date().getFullYear() - 2}-12-31`
   }
   if (profile.maxVotes) common['vote_count.lte'] = profile.maxVotes
   if (profile.maxPopularity) common['popularity.lte'] = profile.maxPopularity
-  if (category === '华语电影') common.with_original_language = 'zh'
+  if (category === '华语电影') {
+    common.with_original_language = 'zh'
+    if (playerLevel === '阅片无数') common['vote_count.gte'] = 200
+  }
   if (category === '欧美电影') common.with_original_language = 'en'
   if (category === '日韩电影') common.with_original_language = languageOverride ?? (page % 2 ? 'ja' : 'ko')
   if (category === '动画电影') common.with_genres = 16
@@ -147,6 +160,31 @@ function discoverParams(
     common['primary_release_date.lte'] = '2005-12-31'
   }
   return common
+}
+
+function isFeatureFilm(movie: TmdbListMovie) {
+  const genres = new Set(movie.genre_ids ?? [])
+  if (genres.has(DOCUMENTARY_GENRE_ID) || genres.has(TV_MOVIE_GENRE_ID)) return false
+
+  // 音乐剧情片仍然保留；只有音乐类型且缺少叙事类型，或明确标注现场演出的内容才排除。
+  if (genres.has(MUSIC_GENRE_ID)) {
+    const hasNarrativeGenre = [...genres].some((genre) => NARRATIVE_GENRE_IDS.has(genre))
+    const searchableText = `${movie.title} ${movie.original_title} ${movie.overview ?? ''}`
+    if (!hasNarrativeGenre || NON_FEATURE_PATTERN.test(searchableText)) return false
+  }
+
+  return Boolean(movie.release_date && movie.title && (movie.poster_path || movie.backdrop_path))
+}
+
+function classicQualityScore(movie: TmdbListMovie) {
+  const rating = movie.vote_average ?? 0
+  const votes = movie.vote_count ?? 0
+  const releaseYear = Number(movie.release_date?.slice(0, 4)) || new Date().getFullYear()
+  const voteConfidence = votes / (votes + 1_500)
+  const weightedRating = voteConfidence * rating + (1 - voteConfidence) * 6.8
+  const establishedBonus = releaseYear <= 2005 ? 22 : releaseYear <= 2015 ? 14 : releaseYear <= 2022 ? 6 : 0
+  const imageBonus = movie.poster_path && movie.backdrop_path ? 4 : 0
+  return weightedRating * 30 + Math.min(90, Math.log10(votes + 1) * 20) + establishedBonus + imageBonus
 }
 
 function regionFromLanguage(language?: string): Movie['region'] {
@@ -324,8 +362,10 @@ async function discoverQuizMovies(
   const cached = discoveryCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return shuffle(cached.movies)
 
-  const profile = levelProfiles[playerLevel]
-  const pages = shuffle(Array.from({ length: profile.maxPage }, (_, index) => index + 1)).slice(0, pageCount)
+  const pages = Array.from(
+    { length: Math.min(pageCount, levelProfiles[playerLevel].maxPage) },
+    (_, index) => category === '日韩电影' ? Math.floor(index / 2) + 1 : index + 1,
+  )
   const requests = category === '日韩电影'
     ? pages.map((page, index) => ({ page, language: (index % 2 === 0 ? 'ja' : 'ko') as 'ja' | 'ko' }))
     : pages.map((page) => ({ page, language: undefined }))
@@ -338,11 +378,16 @@ async function discoverQuizMovies(
   )
   const unique = [...new Map(
     responses.flatMap((response) => response.results)
-      .filter((movie) => movie.title && (movie.poster_path || movie.backdrop_path))
+      .filter(isFeatureFilm)
       .map((movie) => [movie.id, movie]),
   ).values()]
-  discoveryCache.set(cacheKey, { expiresAt: Date.now() + DISCOVERY_CACHE_MS, movies: unique })
-  return shuffle(unique)
+  const qualityPool = playerLevel === '阅片无数'
+    ? unique
+        .sort((left, right) => classicQualityScore(right) - classicQualityScore(left))
+        .slice(0, Math.max(mode * 2, mode + 18))
+    : unique
+  discoveryCache.set(cacheKey, { expiresAt: Date.now() + DISCOVERY_CACHE_MS, movies: qualityPool })
+  return shuffle(qualityPool)
 }
 
 export async function createTmdbQuiz(
