@@ -165,9 +165,11 @@ export default function App() {
         category={category}
         playerLevel={playerLevel}
         onCategoryChange={setCategory}
-        onPlayerLevelChange={setPlayerLevel}
+        onSelectPlayerLevel={(chosenPlayerLevel) => {
+          setPlayerLevel(chosenPlayerLevel)
+          void startQuiz(mode, category, chosenPlayerLevel)
+        }}
         onBack={() => setScreen('home')}
-        onStart={() => void startQuiz()}
       />
     )
   }

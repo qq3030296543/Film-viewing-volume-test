@@ -6,9 +6,8 @@ interface Props {
   category: Category
   playerLevel: PlayerLevel
   onCategoryChange: (category: Category) => void
-  onPlayerLevelChange: (level: PlayerLevel) => void
+  onSelectPlayerLevel: (level: PlayerLevel) => void
   onBack: () => void
-  onStart: () => void
 }
 
 const levels: Array<{
@@ -46,9 +45,8 @@ export function DifficultyScreen({
   category,
   playerLevel,
   onCategoryChange,
-  onPlayerLevelChange,
+  onSelectPlayerLevel,
   onBack,
-  onStart,
 }: Props) {
   return (
     <main className="difficulty-shell">
@@ -63,7 +61,7 @@ export function DifficultyScreen({
         <div className="difficulty-title-block animate-fade-rise">
           <span>IDENTITY / DIFFICULTY PROFILE</span>
           <h1 id="difficulty-title">你认为自己是哪一种影迷？</h1>
-          <p>已选择 <strong>{mode} 部电影</strong>。身份会实际改变电影的知名度区间、抽题深度和错误选项相似度。</p>
+          <p>已选择 <strong>{mode} 部电影</strong>。选择身份后将立即按对应难度实时生成片单与相似干扰项。</p>
         </div>
 
         <div className="difficulty-cards animate-fade-rise-delay" role="radiogroup" aria-label="选择测试难度">
@@ -71,7 +69,7 @@ export function DifficultyScreen({
             <button
               key={level.value}
               className={playerLevel === level.value ? 'selected' : ''}
-              onClick={() => onPlayerLevelChange(level.value)}
+              onClick={() => onSelectPlayerLevel(level.value)}
               role="radio"
               aria-checked={playerLevel === level.value}
             >
@@ -92,8 +90,8 @@ export function DifficultyScreen({
               {categories.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </div>
-          <p><span>{playerLevel}</span><strong>{category} · {mode} 题</strong></p>
-          <button onClick={onStart}>进入放映厅 <span aria-hidden="true">→</span></button>
+          <p><span>点击上方身份后立即出题</span><strong>{category} · {mode} 题</strong></p>
+          <div className="difficulty-live-note"><i /><span>TMDB LIVE</span><small>按身份实时筛选</small></div>
         </div>
       </section>
 
