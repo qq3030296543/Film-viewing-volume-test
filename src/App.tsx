@@ -1,23 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DatabaseLoading } from './components/DatabaseLoading'
+import { DifficultyScreen } from './components/DifficultyScreen'
 import { HomeScreen } from './components/HomeScreen'
 import { QuizScreen } from './components/QuizScreen'
 import { ResultScreen } from './components/ResultScreen'
 import { createTmdbQuiz, hydrateTmdbMovieArtwork, readTmdbCredential } from './services/tmdb'
-import type { AnswerRecord, Category, QuizResult, QuizSession, TestMode } from './types'
+import type { AnswerRecord, Category, PlayerLevel, QuizResult, QuizSession, TestMode } from './types'
 import { calculateResult, createQuiz } from './utils/quiz'
 
 const ACTIVE_KEY = 'cine-memory-active-v2'
 const HISTORY_KEY = 'cine-memory-history-v1'
 
-type Screen = 'home' | 'loading' | 'quiz' | 'result'
+type Screen = 'home' | 'difficulty' | 'loading' | 'quiz' | 'result'
 
 const makeDevelopmentPreviewSession = (): QuizSession | null => {
   if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('previewQuiz')) return null
-  const previewMovies = createQuiz(10, '综合')
+  const previewMovies = createQuiz(10, '综合', '略知一二')
   return {
     mode: 10,
     category: '综合',
+    playerLevel: '略知一二',
     movies: previewMovies,
     currentIndex: 0,
     answers: [],
@@ -41,6 +43,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(() => previewSession ? 'quiz' : 'home')
   const [mode, setMode] = useState<TestMode>(10)
   const [category, setCategory] = useState<Category>('综合')
+  const [playerLevel, setPlayerLevel] = useState<PlayerLevel>('略知一二')
   const [session, setSession] = useState<QuizSession | null>(() => previewSession ?? readStorage<QuizSession | null>(ACTIVE_KEY, null))
   const [history, setHistory] = useState<QuizResult[]>(() => readStorage<QuizResult[]>(HISTORY_KEY, []))
   const [result, setResult] = useState<QuizResult | null>(null)
@@ -80,24 +83,31 @@ export default function App() {
     return () => { cancelled = true }
   }, [credential, screen, session?.startedAt])
 
-  const startQuiz = async (chosenMode = mode, chosenCategory = category, forceLocal = false) => {
+  const startQuiz = async (
+    chosenMode = mode,
+    chosenCategory = category,
+    chosenPlayerLevel = playerLevel,
+    forceLocal = false,
+  ) => {
     setMode(chosenMode)
     setCategory(chosenCategory)
+    setPlayerLevel(chosenPlayerLevel)
     if (credential && !forceLocal) setScreen('loading')
 
     let quizMovies: QuizSession['movies']
     try {
       quizMovies = credential && !forceLocal
-        ? await createTmdbQuiz(chosenMode, chosenCategory, credential)
-        : createQuiz(chosenMode, chosenCategory)
+        ? await createTmdbQuiz(chosenMode, chosenCategory, chosenPlayerLevel, credential)
+        : createQuiz(chosenMode, chosenCategory, chosenPlayerLevel)
     } catch {
       // 在线片库超时或暂时不可用时立即启用内置题库，不再逐张等待图片检测。
-      quizMovies = createQuiz(chosenMode, chosenCategory)
+      quizMovies = createQuiz(chosenMode, chosenCategory, chosenPlayerLevel)
     }
 
     const next: QuizSession = {
       mode: chosenMode,
       category: chosenCategory,
+      playerLevel: chosenPlayerLevel,
       movies: quizMovies,
       currentIndex: 0,
       answers: [],
@@ -143,19 +153,38 @@ export default function App() {
         session={session}
         onAnswer={recordAnswer}
         onExit={() => setScreen('home')}
-        onRestart={() => void startQuiz(session.mode, session.category, isLocalSession)}
+        onRestart={() => void startQuiz(session.mode, session.category, session.playerLevel ?? '略知一二', isLocalSession)}
       />
     )
   }
 
-  if (screen === 'loading') return <DatabaseLoading mode={mode} category={category} />
+  if (screen === 'difficulty') {
+    return (
+      <DifficultyScreen
+        mode={mode}
+        category={category}
+        playerLevel={playerLevel}
+        onCategoryChange={setCategory}
+        onPlayerLevelChange={setPlayerLevel}
+        onBack={() => setScreen('home')}
+        onStart={() => void startQuiz()}
+      />
+    )
+  }
+
+  if (screen === 'loading') return <DatabaseLoading mode={mode} category={category} playerLevel={playerLevel} />
 
   if (screen === 'result' && result) {
     return (
       <ResultScreen
         result={result}
-        onRetry={() => void startQuiz(result.mode, result.category, result.dataSource === 'local')}
-        onChangeCategory={() => { setMode(result.mode); setScreen('home') }}
+        onRetry={() => void startQuiz(result.mode, result.category, result.playerLevel ?? '略知一二', result.dataSource === 'local')}
+        onChangeCategory={() => {
+          setMode(result.mode)
+          setCategory(result.category)
+          setPlayerLevel(result.playerLevel ?? '略知一二')
+          setScreen('difficulty')
+        }}
       />
     )
   }
@@ -163,13 +192,11 @@ export default function App() {
   return (
     <HomeScreen
       mode={mode}
-      category={category}
       bestResult={bestResult}
       historyCount={history.length}
       hasActiveQuiz={Boolean(session)}
-      onModeChange={setMode}
-      onCategoryChange={setCategory}
-      onStart={() => void startQuiz()}
+      onChooseMode={(chosenMode) => { setMode(chosenMode); setScreen('difficulty') }}
+      onStartSetup={() => setScreen('difficulty')}
       onResume={() => setScreen('quiz')}
     />
   )

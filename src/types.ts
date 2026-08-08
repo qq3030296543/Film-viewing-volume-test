@@ -14,6 +14,8 @@ export type Category =
 
 export type Difficulty = '入门' | '进阶' | '资深'
 
+export type PlayerLevel = '入门菜鸟' | '略知一二' | '阅片无数'
+
 export interface Movie {
   id: string
   title: string
@@ -57,6 +59,7 @@ export interface AnswerRecord {
 export interface QuizSession {
   mode: TestMode
   category: Category
+  playerLevel: PlayerLevel
   movies: Movie[]
   currentIndex: number
   answers: AnswerRecord[]
@@ -81,6 +84,7 @@ export interface QuizResult {
   accuracy: number
   category: Category
   mode: TestMode
+  playerLevel: PlayerLevel
   categoryScores: CategoryScore[]
   completedAt: number
   dataSource?: 'local' | 'tmdb'

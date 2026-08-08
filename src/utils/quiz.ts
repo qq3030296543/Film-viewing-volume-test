@@ -1,5 +1,5 @@
 import { movies } from '../data/movies'
-import type { AnswerRecord, Category, CategoryScore, Movie, QuizResult, QuizSession, TestMode } from '../types'
+import type { AnswerRecord, Category, CategoryScore, Movie, PlayerLevel, QuizResult, QuizSession, TestMode } from '../types'
 
 export const categories: Category[] = ['综合', '华语电影', '欧美电影', '日韩电影', '动画电影', '科幻', '悬疑', '恐怖', '喜剧', '文艺经典']
 
@@ -23,10 +23,45 @@ export const matchesCategory = (movie: Movie, category: Category) => {
   return movie.genres.includes(category.replace('电影', ''))
 }
 
-export const createQuiz = (mode: TestMode, category: Category): Movie[] => {
-  const preferred = shuffle(movies.filter((movie) => matchesCategory(movie, category)))
-  const remaining = shuffle(movies.filter((movie) => !preferred.some((item) => item.id === movie.id)))
-  return [...preferred, ...remaining].slice(0, mode)
+const difficultyOrder: Record<PlayerLevel, Movie['difficulty'][]> = {
+  入门菜鸟: ['入门', '进阶', '资深'],
+  略知一二: ['进阶', '资深', '入门'],
+  阅片无数: ['资深', '进阶', '入门'],
+}
+
+const localDistractorScore = (target: Movie, candidate: Movie, level: PlayerLevel) => {
+  const sharedGenres = target.genres.filter((genre) => candidate.genres.includes(genre)).length
+  const yearDistance = Math.abs(target.year - candidate.year)
+  const sameRegion = target.region === candidate.region ? 1 : 0
+  const difficultyMatch = target.difficulty === candidate.difficulty ? 1 : 0
+  const weights = level === '阅片无数'
+    ? { genre: 125, region: 105, difficulty: 42, year: 3.1 }
+    : level === '略知一二'
+      ? { genre: 98, region: 82, difficulty: 34, year: 2.4 }
+      : { genre: 72, region: 55, difficulty: 20, year: 1.5 }
+  return sharedGenres * weights.genre
+    + sameRegion * weights.region
+    + difficultyMatch * weights.difficulty
+    - Math.min(yearDistance, 40) * weights.year
+}
+
+const withLocalDistractors = (selected: Movie[], level: PlayerLevel) => selected.map((movie) => {
+  const candidates = shuffle(movies.filter((candidate) => candidate.id !== movie.id && candidate.title !== movie.title))
+    .sort((left, right) => localDistractorScore(movie, right, level) - localDistractorScore(movie, left, level))
+    .map((candidate) => candidate.title)
+  return { ...movie, recognitionDistractors: [...new Set(candidates)].slice(0, 3) }
+})
+
+export const createQuiz = (mode: TestMode, category: Category, playerLevel: PlayerLevel): Movie[] => {
+  const categoryMovies = movies.filter((movie) => matchesCategory(movie, category))
+  const ordered = difficultyOrder[playerLevel].flatMap((difficulty) =>
+    shuffle(categoryMovies.filter((movie) => movie.difficulty === difficulty)),
+  )
+  const categoryIds = new Set(ordered.map((movie) => movie.id))
+  const fallback = difficultyOrder[playerLevel].flatMap((difficulty) =>
+    shuffle(movies.filter((movie) => !categoryIds.has(movie.id) && movie.difficulty === difficulty)),
+  )
+  return withLocalDistractors([...ordered, ...fallback].slice(0, mode), playerLevel)
 }
 
 const displayGenres = ['剧情', '科幻', '悬疑', '动画', '喜剧', '恐怖']
@@ -58,6 +93,7 @@ export const calculateResult = (session: QuizSession): QuizResult => {
     accuracy: Math.round((recognizedCount / session.mode) * 100),
     category: session.category,
     mode: session.mode,
+    playerLevel: session.playerLevel ?? '略知一二',
     categoryScores,
     completedAt: Date.now(),
     dataSource: session.movies.some((movie) => movie.source === 'tmdb') ? 'tmdb' : 'local',

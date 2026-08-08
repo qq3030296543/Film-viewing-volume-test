@@ -16,14 +16,16 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
   const [shareOpen, setShareOpen] = useState(false)
   const [toast, setToast] = useState('')
   const shareCardRef = useRef<HTMLDivElement>(null)
-  const percentile = Math.min(99, 28 + Math.round(result.score * 0.72))
+  const playerLevel = result.playerLevel ?? '略知一二'
+  const percentileFactor = playerLevel === '阅片无数' ? .89 : playerLevel === '略知一二' ? .76 : .63
+  const percentile = Math.min(99, 12 + Math.round(result.score * percentileFactor))
   const strongest = [...result.categoryScores].sort((a, b) => b.score - a.score).find((item) => item.total > 0)
   const recommendations = useMemo(() => {
     const preferred = strongest?.label
     return movies.filter((movie) => !preferred || movie.genres.includes(preferred)).slice(0, 4)
   }, [strongest?.label])
 
-  const shareText = `我在「光影鉴赏局」获得 ${result.score} 分，段位：${rank.name}，超越了 ${percentile}% 的玩家。你也来试试？`
+  const shareText = `我以「${playerLevel}」身份完成光影鉴赏局，获得 ${result.score} 分，段位：${rank.name}，超越了 ${percentile}% 的玩家。你也来试试？`
 
   const share = async () => {
     const shareApi = (navigator as unknown as { share?: (data: ShareData) => Promise<void> }).share
@@ -72,7 +74,7 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
     ctx.fillText(`猜中 ${result.recognizedCount} 部  ·  答错 ${result.fuzzyCount} 部  ·  最长连胜 ${result.bestStreak}`, 110, 1050)
     ctx.fillStyle = '#9d998f'
     ctx.font = '30px sans-serif'
-    ctx.fillText(`擅长类型：${strongest?.label ?? '综合'}  ·  超越 ${percentile}% 玩家`, 110, 1120)
+    ctx.fillText(`${playerLevel}  ·  擅长：${strongest?.label ?? '综合'}  ·  超越 ${percentile}% 玩家`, 110, 1120)
     ctx.strokeStyle = rank.color
     ctx.beginPath(); ctx.moveTo(110, 1200); ctx.lineTo(970, 1200); ctx.stroke()
     ctx.fillStyle = '#f4efe6'
@@ -95,7 +97,7 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
           <span className="section-index">测试完成 · YOUR CINEMA RANK</span>
           <div className="rank-name-line"><span className="rank-icon">{rank.icon}</span><div><small>{rank.eyebrow}</small><h1>{rank.name}</h1></div></div>
           <p>{rank.description}</p>
-          <div className="percentile">你的电影记忆超过了 <strong>{percentile}%</strong> 的玩家</div>
+          <div className="percentile">挑战身份：<b>{playerLevel}</b> · 你的电影记忆超过了 <strong>{percentile}%</strong> 的玩家</div>
         </div>
         <div className="score-dial"><span>{result.score}</span><small>/ 100</small><i style={{ '--score': `${result.score * 3.6}deg` } as React.CSSProperties} /></div>
       </section>
@@ -140,7 +142,7 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
           <button className="modal-close" onClick={() => setShareOpen(false)} aria-label="关闭">×</button>
           <div className="share-preview" ref={shareCardRef} style={{ '--rank-color': rank.color } as React.CSSProperties}>
             <span>光影鉴赏局 · CINE MEMORY</span><b>{rank.icon}</b><small>我的阅片段位</small><h2>{rank.name}</h2><strong>{result.score}<i>/100</i></strong>
-            <p>猜中 {result.recognizedCount} · 答错 {result.fuzzyCount} · 连胜 {result.bestStreak}</p><em>一张画面，唤醒一段电影记忆。</em>
+            <p>{playerLevel} · 猜中 {result.recognizedCount} · 答错 {result.fuzzyCount} · 连胜 {result.bestStreak}</p><em>一张画面，唤醒一段电影记忆。</em>
           </div>
           <div className="share-buttons"><button className="primary-button" onClick={downloadCard}>保存为图片</button><button className="secondary-button" onClick={share}>分享成绩</button></div>
         </div>

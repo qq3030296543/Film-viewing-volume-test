@@ -71,7 +71,7 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
 
         <section className="question-panel liquid-glass quiz-question-card">
           <div className="question-kicker">
-            <span>CINEMA MEMORY · VISUAL TEST</span>
+            <span>{session.playerLevel ?? '略知一二'} · VISUAL TEST</span>
             <span className={`difficulty ${movie.difficulty}`}>{movie.difficulty}</span>
           </div>
           <h1>这一帧光影，来自哪部电影？</h1>
@@ -102,7 +102,7 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
       </div>
 
       <footer className="quiz-footer">
-        <span>QUESTION {session.currentIndex + 1} / {session.mode}</span>
+        <span>{session.playerLevel ?? '略知一二'} · QUESTION {session.currentIndex + 1} / {session.mode}</span>
         {movie.source === 'tmdb' ? <TmdbAttribution compact /> : <span>ESC 返回首页 · 1—4 选择答案</span>}
       </footer>
     </main>

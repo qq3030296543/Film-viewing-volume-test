@@ -1,4 +1,4 @@
-import type { Category, Difficulty, Movie, TestMode } from '../types'
+import type { Category, Difficulty, Movie, PlayerLevel, TestMode } from '../types'
 
 const TMDB_API_BASE = 'https://api.themoviedb.org/3'
 const TMDB_PROXY_BASE = '/api/tmdb'
@@ -103,18 +103,40 @@ const shuffle = <T,>(items: readonly T[]) => {
   return output
 }
 
-function discoverParams(category: Category, page: number): Record<string, string | number | boolean> {
+const levelProfiles: Record<PlayerLevel, {
+  sortBy: string
+  minVotes: number
+  maxVotes?: number
+  minRating: number
+  maxPopularity?: number
+  maxPage: number
+}> = {
+  入门菜鸟: { sortBy: 'popularity.desc', minVotes: 2_500, minRating: 5.5, maxPage: 6 },
+  略知一二: { sortBy: 'vote_average.desc', minVotes: 500, maxVotes: 8_000, minRating: 6.1, maxPopularity: 180, maxPage: 14 },
+  阅片无数: { sortBy: 'vote_average.desc', minVotes: 60, maxVotes: 2_200, minRating: 6.5, maxPopularity: 80, maxPage: 30 },
+}
+
+function discoverParams(
+  category: Category,
+  page: number,
+  playerLevel: PlayerLevel,
+  languageOverride?: 'ja' | 'ko',
+): Record<string, string | number | boolean> {
+  const profile = levelProfiles[playerLevel]
   const common: Record<string, string | number | boolean> = {
     language: 'zh-CN',
     include_adult: false,
     include_video: false,
     page,
-    sort_by: category === '文艺经典' ? 'vote_average.desc' : 'popularity.desc',
-    'vote_count.gte': category === '文艺经典' ? 500 : 800,
+    sort_by: category === '文艺经典' ? 'vote_average.desc' : profile.sortBy,
+    'vote_count.gte': category === '文艺经典' ? Math.min(profile.minVotes, 400) : profile.minVotes,
+    'vote_average.gte': profile.minRating,
   }
+  if (profile.maxVotes) common['vote_count.lte'] = profile.maxVotes
+  if (profile.maxPopularity) common['popularity.lte'] = profile.maxPopularity
   if (category === '华语电影') common.with_original_language = 'zh'
   if (category === '欧美电影') common.with_original_language = 'en'
-  if (category === '日韩电影') common.with_original_language = page % 2 ? 'ja' : 'ko'
+  if (category === '日韩电影') common.with_original_language = languageOverride ?? (page % 2 ? 'ja' : 'ko')
   if (category === '动画电影') common.with_genres = 16
   if (category === '科幻') common.with_genres = 878
   if (category === '悬疑') common.with_genres = 9648
@@ -134,22 +156,63 @@ function regionFromLanguage(language?: string): Movie['region'] {
 }
 
 function difficultyFromVotes(votes: number): Difficulty {
-  if (votes >= 12_000) return '入门'
-  if (votes >= 3_000) return '进阶'
+  if (votes >= 6_000) return '入门'
+  if (votes >= 900) return '进阶'
   return '资深'
 }
 
 const imageUrl = (path: string, size: 'w342' | 'w500' | 'w780' | 'original') =>
   `https://image.tmdb.org/t/p/${size}${path}`
 
-function makeQuizMovie(item: TmdbListMovie, all: TmdbListMovie[], index: number): Movie | null {
+const genreOverlap = (left: TmdbListMovie, right: TmdbListMovie) => {
+  const rightGenres = new Set(right.genre_ids ?? [])
+  return (left.genre_ids ?? []).filter((genre) => rightGenres.has(genre)).length
+}
+
+function distractorScore(target: TmdbListMovie, candidate: TmdbListMovie, playerLevel: PlayerLevel) {
+  const targetYear = Number(target.release_date?.slice(0, 4)) || 2000
+  const candidateYear = Number(candidate.release_date?.slice(0, 4)) || 2000
+  const yearDistance = Math.abs(targetYear - candidateYear)
+  const voteDistance = Math.abs(Math.log10((target.vote_count ?? 0) + 10) - Math.log10((candidate.vote_count ?? 0) + 10))
+  const popularityDistance = Math.abs(Math.log10((target.popularity ?? 0) + 2) - Math.log10((candidate.popularity ?? 0) + 2))
+  const titleLengthDistance = Math.abs(target.title.length - candidate.title.length)
+  const sameLanguage = target.original_language === candidate.original_language
+  const weights = playerLevel === '阅片无数'
+    ? { genre: 135, language: 125, year: 3.2, votes: 38, popularity: 26, title: 2.6 }
+    : playerLevel === '略知一二'
+      ? { genre: 108, language: 100, year: 2.6, votes: 31, popularity: 21, title: 2.2 }
+      : { genre: 76, language: 68, year: 1.8, votes: 20, popularity: 13, title: 1.5 }
+
+  return genreOverlap(target, candidate) * weights.genre
+    + (sameLanguage ? weights.language : 0)
+    + Math.max(0, 52 - yearDistance * weights.year)
+    + Math.max(0, 40 - voteDistance * weights.votes)
+    + Math.max(0, 28 - popularityDistance * weights.popularity)
+    + Math.max(0, 15 - titleLengthDistance * weights.title)
+}
+
+function selectDistractors(item: TmdbListMovie, all: TmdbListMovie[], playerLevel: PlayerLevel) {
+  const uniqueCandidates = [...new Map(
+    shuffle(all)
+      .filter((movie) => movie.id !== item.id && movie.title && movie.title !== item.title)
+      .map((movie) => [movie.title, movie]),
+  ).values()]
+  return uniqueCandidates
+    .sort((left, right) => distractorScore(item, right, playerLevel) - distractorScore(item, left, playerLevel))
+    .slice(0, 3)
+    .map((movie) => movie.title)
+}
+
+function makeQuizMovie(
+  item: TmdbListMovie,
+  all: TmdbListMovie[],
+  index: number,
+  playerLevel: PlayerLevel,
+): Movie | null {
   const primaryPath = item.backdrop_path ?? item.poster_path
   if (!primaryPath || !item.title) return null
 
-  const distractors = shuffle(all)
-    .filter((movie) => movie.id !== item.id && movie.title && movie.title !== item.title)
-    .map((movie) => movie.title)
-    .slice(0, 3)
+  const distractors = selectDistractors(item, all, playerLevel)
   if (distractors.length < 3) return null
 
   // 识别题优先使用横版剧照。TMDB 的主海报经常自带片名，剧照更适合无提示识别。
@@ -185,7 +248,7 @@ function makeQuizMovie(item: TmdbListMovie, all: TmdbListMovie[], index: number)
     explanation: '资料于测试开始时从 TMDB 实时同步。',
     spoiler: false,
     difficulty: difficultyFromVotes(votes),
-    recommendation: `TMDB ${rating.toFixed(1)} 分 · ${votes.toLocaleString('zh-CN')} 人评分。`,
+    recommendation: `TMDB ${rating.toFixed(1)} 分 · ${votes.toLocaleString('zh-CN')} 人评分 · ${playerLevel}片单。`,
     source: 'tmdb',
     tmdbId: item.id,
     tmdbUrl: `https://www.themoviedb.org/movie/${item.id}`,
@@ -250,15 +313,28 @@ export async function hydrateTmdbMovieArtwork(movie: Movie, credential: string):
   }
 }
 
-async function discoverQuizMovies(mode: TestMode, category: Category, credential: string) {
-  const pageCount = category === '日韩电影' ? 2 : mode === 10 ? 1 : 2
-  const cacheKey = `${category}:${pageCount}`
+async function discoverQuizMovies(
+  mode: TestMode,
+  category: Category,
+  playerLevel: PlayerLevel,
+  credential: string,
+) {
+  const pageCount = mode === 10 ? 2 : mode === 20 ? 3 : 4
+  const cacheKey = `${category}:${playerLevel}:${pageCount}`
   const cached = discoveryCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return shuffle(cached.movies)
 
-  const pages = category === '日韩电影' ? [1, 2] : shuffle([1, 2, 3, 4, 5]).slice(0, pageCount)
+  const profile = levelProfiles[playerLevel]
+  const pages = shuffle(Array.from({ length: profile.maxPage }, (_, index) => index + 1)).slice(0, pageCount)
+  const requests = category === '日韩电影'
+    ? pages.map((page, index) => ({ page, language: (index % 2 === 0 ? 'ja' : 'ko') as 'ja' | 'ko' }))
+    : pages.map((page) => ({ page, language: undefined }))
   const responses = await Promise.all(
-    pages.map((page) => tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, page))),
+    requests.map(({ page, language }) => tmdbRequest<DiscoverResponse>(
+      '/discover/movie',
+      credential,
+      discoverParams(category, page, playerLevel, language),
+    )),
   )
   const unique = [...new Map(
     responses.flatMap((response) => response.results)
@@ -269,12 +345,19 @@ async function discoverQuizMovies(mode: TestMode, category: Category, credential
   return shuffle(unique)
 }
 
-export async function createTmdbQuiz(mode: TestMode, category: Category, credential: string): Promise<Movie[]> {
-  const discovered = await discoverQuizMovies(mode, category, credential)
-  const quiz = discovered
-    .map((item, index) => makeQuizMovie(item, discovered, index))
-    .filter((movie): movie is Movie => Boolean(movie))
-    .slice(0, mode)
+export async function createTmdbQuiz(
+  mode: TestMode,
+  category: Category,
+  playerLevel: PlayerLevel,
+  credential: string,
+): Promise<Movie[]> {
+  const discovered = await discoverQuizMovies(mode, category, playerLevel, credential)
+  const quiz = [...new Map(
+    discovered
+      .map((item, index) => makeQuizMovie(item, discovered, index, playerLevel))
+      .filter((movie): movie is Movie => Boolean(movie))
+      .map((movie) => [movie.title, movie]),
+  ).values()].slice(0, mode)
 
   if (quiz.length < mode) throw new Error(`TMDB 返回的可用电影不足：需要 ${mode} 部，得到 ${quiz.length} 部。`)
 

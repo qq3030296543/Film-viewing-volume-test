@@ -1,20 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { movies } from '../data/movies'
 import { createTmdbHomePosterPool, readTmdbCredential, type HomePosterItem } from '../services/tmdb'
-import type { Category, QuizResult, TestMode } from '../types'
-import { categories } from '../utils/quiz'
+import type { QuizResult, TestMode } from '../types'
 import { homePosterCandidates, shuffleItems } from '../utils/posters'
 import { ResilientPosterImage } from './ResilientPosterImage'
 
 interface Props {
   mode: TestMode
-  category: Category
   bestResult?: QuizResult
   historyCount: number
   hasActiveQuiz: boolean
-  onModeChange: (mode: TestMode) => void
-  onCategoryChange: (category: Category) => void
-  onStart: () => void
+  onChooseMode: (mode: TestMode) => void
+  onStartSetup: () => void
   onResume: () => void
 }
 
@@ -55,13 +52,11 @@ const makeInitialPosterPool = () => {
 
 export function HomeScreen({
   mode,
-  category,
   bestResult,
   historyCount,
   hasActiveQuiz,
-  onModeChange,
-  onCategoryChange,
-  onStart,
+  onChooseMode,
+  onStartSetup,
   onResume,
 }: Props) {
   const [posterPool] = useState<HomePosterItem[]>(makeInitialPosterPool)
@@ -135,7 +130,7 @@ export function HomeScreen({
         <div className="cinematic-nav-links">
           <a className="active" href="#home">首页</a>
           <a href="#test-config">阅历测试</a>
-          {bestResult && <span>最高 {bestResult.score} 分</span>}
+          {bestResult && <span>最高 {bestResult.score} 分 · {bestResult.playerLevel ?? '旧版测试'}</span>}
         </div>
         {hasActiveQuiz ? (
           <button className="liquid-glass nav-journey-button" onClick={onResume}>继续测试</button>
@@ -154,7 +149,7 @@ export function HomeScreen({
           从一张不透露片名的海报开始，凭记忆辨认电影，穿越类型、年代与地域，
           最终获得只属于你的阅片段位。
         </p>
-        <button className="liquid-glass cinematic-cta animate-fade-rise-delay-2" onClick={onStart}>
+        <button className="liquid-glass cinematic-cta animate-fade-rise-delay-2" onClick={onStartSetup}>
           <span>{hasActiveQuiz ? '重新开始测试' : '开始阅历测试'}</span>
           <span aria-hidden="true">→</span>
         </button>
@@ -169,7 +164,7 @@ export function HomeScreen({
             <button
               key={item.value}
               className={mode === item.value ? 'selected' : ''}
-              onClick={() => onModeChange(item.value)}
+              onClick={() => onChooseMode(item.value)}
               aria-pressed={mode === item.value}
             >
               <strong>{item.label}</strong><small>{item.note}</small>
@@ -177,14 +172,13 @@ export function HomeScreen({
           ))}
         </div>
 
-        <div className="cinematic-category">
-          <label htmlFor="movie-category">电影类型</label>
-          <select id="movie-category" value={category} onChange={(event) => onCategoryChange(event.target.value as Category)}>
-            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
+        <div className="config-flow-hint">
+          <span>NEXT / 02</span>
+          <strong>选择身份与类型</strong>
+          <small>难度将改变片单与干扰项</small>
         </div>
 
-        <button className="config-start-button" onClick={onStart}>进入测试 <span aria-hidden="true">→</span></button>
+        <button className="config-start-button" onClick={onStartSetup}>选择身份 <span aria-hidden="true">→</span></button>
       </section>
 
       <footer className="cinematic-footer">
