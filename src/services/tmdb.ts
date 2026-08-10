@@ -5,6 +5,8 @@ const TMDB_PROXY_BASE = '/api/tmdb'
 const PROXY_CREDENTIAL = 'netlify-proxy'
 const REQUEST_TIMEOUT_MS = 5_000
 const DISCOVERY_CACHE_MS = 5 * 60 * 1_000
+const RECENT_MOVIES_STORAGE_KEY = 'cine-recent-tmdb-movies-v1'
+const RECENT_MOVIES_LIMIT = 240
 const DOCUMENTARY_GENRE_ID = 99
 const MUSIC_GENRE_ID = 10402
 const TV_MOVIE_GENRE_ID = 10770
@@ -116,10 +118,10 @@ const levelProfiles: Record<PlayerLevel, {
   maxPopularity?: number
   maxPage: number
 }> = {
-  入门菜鸟: { sortBy: 'popularity.desc', minVotes: 2_500, minRating: 5.5, maxPage: 6 },
-  略知一二: { sortBy: 'vote_average.desc', minVotes: 500, maxVotes: 8_000, minRating: 6.1, maxPopularity: 180, maxPage: 14 },
+  入门菜鸟: { sortBy: 'popularity.desc', minVotes: 2_500, minRating: 5.5, maxPage: 20 },
+  略知一二: { sortBy: 'vote_average.desc', minVotes: 500, maxVotes: 8_000, minRating: 6.1, maxPopularity: 180, maxPage: 30 },
   // 困难模式靠相似干扰项制造难度，不靠低分、极冷门或非院线内容为难用户。
-  阅片无数: { sortBy: 'vote_average.desc', minVotes: 350, minRating: 7, maxPage: 22 },
+  阅片无数: { sortBy: 'vote_average.desc', minVotes: 300, minRating: 6.5, maxPage: 36 },
 }
 
 function discoverParams(
@@ -140,7 +142,7 @@ function discoverParams(
     without_genres: `${DOCUMENTARY_GENRE_ID},${TV_MOVIE_GENRE_ID}`,
   }
   if (playerLevel === '阅片无数') {
-    common['primary_release_date.lte'] = `${new Date().getFullYear() - 2}-12-31`
+    common['primary_release_date.lte'] = `${new Date().getFullYear() - 1}-12-31`
   }
   if (profile.maxVotes) common['vote_count.lte'] = profile.maxVotes
   if (profile.maxPopularity) common['popularity.lte'] = profile.maxPopularity
@@ -176,15 +178,58 @@ function isFeatureFilm(movie: TmdbListMovie) {
   return Boolean(movie.release_date && movie.title && (movie.poster_path || movie.backdrop_path))
 }
 
-function classicQualityScore(movie: TmdbListMovie) {
+function featureQualityScore(movie: TmdbListMovie) {
   const rating = movie.vote_average ?? 0
   const votes = movie.vote_count ?? 0
   const releaseYear = Number(movie.release_date?.slice(0, 4)) || new Date().getFullYear()
   const voteConfidence = votes / (votes + 1_500)
   const weightedRating = voteConfidence * rating + (1 - voteConfidence) * 6.8
-  const establishedBonus = releaseYear <= 2005 ? 22 : releaseYear <= 2015 ? 14 : releaseYear <= 2022 ? 6 : 0
+  const establishedBonus = releaseYear <= 2005 ? 10 : releaseYear <= 2015 ? 7 : releaseYear <= 2022 ? 3 : 0
   const imageBonus = movie.poster_path && movie.backdrop_path ? 4 : 0
   return weightedRating * 30 + Math.min(90, Math.log10(votes + 1) * 20) + establishedBonus + imageBonus
+}
+
+function randomPages(maxPage: number, count: number, startAt = 2) {
+  if (maxPage < startAt || count <= 0) return []
+  return shuffle(Array.from({ length: maxPage - startAt + 1 }, (_, index) => index + startAt)).slice(0, count)
+}
+
+function readRecentMovieIds() {
+  try {
+    const stored = localStorage.getItem(RECENT_MOVIES_STORAGE_KEY)
+    if (!stored) return []
+    const parsed = JSON.parse(stored) as unknown
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isInteger(id)) : []
+  } catch {
+    return []
+  }
+}
+
+function prioritizeUnseenMovies(movies: TmdbListMovie[]) {
+  const recentIds = readRecentMovieIds()
+  if (!recentIds.length) return shuffle(movies)
+
+  const recentPosition = new Map(recentIds.map((id, index) => [id, index]))
+  const unseen = shuffle(movies.filter((movie) => !recentPosition.has(movie.id)))
+  const previouslySeen = movies
+    .filter((movie) => recentPosition.has(movie.id))
+    .sort((left, right) => (recentPosition.get(left.id) ?? 0) - (recentPosition.get(right.id) ?? 0))
+  return [...unseen, ...previouslySeen]
+}
+
+function rememberQuizMovies(movies: Movie[]) {
+  const selectedIds = movies.flatMap((movie) => movie.tmdbId ? [movie.tmdbId] : [])
+  if (!selectedIds.length) return
+  try {
+    const selectedSet = new Set(selectedIds)
+    const history = readRecentMovieIds().filter((id) => !selectedSet.has(id))
+    localStorage.setItem(
+      RECENT_MOVIES_STORAGE_KEY,
+      JSON.stringify([...history, ...selectedIds].slice(-RECENT_MOVIES_LIMIT)),
+    )
+  } catch {
+    // 隐私模式或存储空间不足时，仍然可以正常实时抽题。
+  }
 }
 
 function regionFromLanguage(language?: string): Movie['region'] {
@@ -357,25 +402,36 @@ async function discoverQuizMovies(
   playerLevel: PlayerLevel,
   credential: string,
 ) {
-  const pageCount = mode === 10 ? 2 : mode === 20 ? 3 : 4
+  const pageCount = mode === 10 ? 4 : mode === 20 ? 6 : 8
   const cacheKey = `${category}:${playerLevel}:${pageCount}`
   const cached = discoveryCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) return shuffle(cached.movies)
+  if (cached && cached.expiresAt > Date.now()) return cached.movies
 
-  const pages = Array.from(
-    { length: Math.min(pageCount, levelProfiles[playerLevel].maxPage) },
-    (_, index) => category === '日韩电影' ? Math.floor(index / 2) + 1 : index + 1,
-  )
-  const requests = category === '日韩电影'
-    ? pages.map((page, index) => ({ page, language: (index % 2 === 0 ? 'ja' : 'ko') as 'ja' | 'ko' }))
-    : pages.map((page) => ({ page, language: undefined }))
-  const responses = await Promise.all(
-    requests.map(({ page, language }) => tmdbRequest<DiscoverResponse>(
+  const profile = levelProfiles[playerLevel]
+  let responses: DiscoverResponse[]
+  if (category === '日韩电影') {
+    const [japaneseSeed, koreanSeed] = await Promise.all([
+      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ja')),
+      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ko')),
+    ])
+    const remainingCount = Math.max(0, pageCount - 2)
+    const japanesePages = randomPages(Math.min(japaneseSeed.total_pages, profile.maxPage), Math.ceil(remainingCount / 2))
+    const koreanPages = randomPages(Math.min(koreanSeed.total_pages, profile.maxPage), Math.floor(remainingCount / 2))
+    const extraResponses = await Promise.all([
+      ...japanesePages.map((page) => tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, page, playerLevel, 'ja'))),
+      ...koreanPages.map((page) => tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, page, playerLevel, 'ko'))),
+    ])
+    responses = [japaneseSeed, koreanSeed, ...extraResponses]
+  } else {
+    const seed = await tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel))
+    const extraPages = randomPages(Math.min(seed.total_pages, profile.maxPage), pageCount - 1)
+    const extraResponses = await Promise.all(extraPages.map((page) => tmdbRequest<DiscoverResponse>(
       '/discover/movie',
       credential,
-      discoverParams(category, page, playerLevel, language),
-    )),
-  )
+      discoverParams(category, page, playerLevel),
+    )))
+    responses = [seed, ...extraResponses]
+  }
   const unique = [...new Map(
     responses.flatMap((response) => response.results)
       .filter(isFeatureFilm)
@@ -383,11 +439,11 @@ async function discoverQuizMovies(
   ).values()]
   const qualityPool = playerLevel === '阅片无数'
     ? unique
-        .sort((left, right) => classicQualityScore(right) - classicQualityScore(left))
-        .slice(0, Math.max(mode * 2, mode + 18))
+        .sort((left, right) => featureQualityScore(right) - featureQualityScore(left))
+        .slice(0, Math.max(mode * 5, 100))
     : unique
   discoveryCache.set(cacheKey, { expiresAt: Date.now() + DISCOVERY_CACHE_MS, movies: qualityPool })
-  return shuffle(qualityPool)
+  return qualityPool
 }
 
 export async function createTmdbQuiz(
@@ -397,14 +453,16 @@ export async function createTmdbQuiz(
   credential: string,
 ): Promise<Movie[]> {
   const discovered = await discoverQuizMovies(mode, category, playerLevel, credential)
+  const prioritized = prioritizeUnseenMovies(discovered)
   const quiz = [...new Map(
-    discovered
+    prioritized
       .map((item, index) => makeQuizMovie(item, discovered, index, playerLevel))
       .filter((movie): movie is Movie => Boolean(movie))
       .map((movie) => [movie.title, movie]),
   ).values()].slice(0, mode)
 
   if (quiz.length < mode) throw new Error(`TMDB 返回的可用电影不足：需要 ${mode} 部，得到 ${quiz.length} 部。`)
+  rememberQuizMovies(quiz)
 
   // 只阻塞等待第一题的无字海报；其余题目由 App 在用户答题时后台预取。
   try {
