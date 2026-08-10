@@ -5,8 +5,8 @@ const TMDB_PROXY_BASE = '/api/tmdb'
 const PROXY_CREDENTIAL = 'netlify-proxy'
 const REQUEST_TIMEOUT_MS = 5_000
 const DISCOVERY_CACHE_MS = 5 * 60 * 1_000
-const RECENT_MOVIES_STORAGE_KEY = 'cine-recent-tmdb-movies-v1'
-const RECENT_MOVIES_LIMIT = 240
+const SEEN_MOVIES_STORAGE_KEY = 'cine-seen-tmdb-movies-v2'
+const LEGACY_RECENT_MOVIES_STORAGE_KEY = 'cine-recent-tmdb-movies-v1'
 const DOCUMENTARY_GENRE_ID = 99
 const MUSIC_GENRE_ID = 10402
 const TV_MOVIE_GENRE_ID = 10770
@@ -194,26 +194,29 @@ function randomPages(maxPage: number, count: number, startAt = 2) {
   return shuffle(Array.from({ length: maxPage - startAt + 1 }, (_, index) => index + startAt)).slice(0, count)
 }
 
-function readRecentMovieIds() {
+function readSeenMovieIds() {
   try {
-    const stored = localStorage.getItem(RECENT_MOVIES_STORAGE_KEY)
+    const stored = localStorage.getItem(SEEN_MOVIES_STORAGE_KEY)
+      ?? localStorage.getItem(LEGACY_RECENT_MOVIES_STORAGE_KEY)
     if (!stored) return []
     const parsed = JSON.parse(stored) as unknown
-    return Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isInteger(id)) : []
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((id): id is number => Number.isInteger(id)))]
+      : []
   } catch {
     return []
   }
 }
 
 function prioritizeUnseenMovies(movies: TmdbListMovie[]) {
-  const recentIds = readRecentMovieIds()
-  if (!recentIds.length) return shuffle(movies)
+  const seenIds = readSeenMovieIds()
+  if (!seenIds.length) return shuffle(movies)
 
-  const recentPosition = new Map(recentIds.map((id, index) => [id, index]))
-  const unseen = shuffle(movies.filter((movie) => !recentPosition.has(movie.id)))
+  const seenPosition = new Map(seenIds.map((id, index) => [id, index]))
+  const unseen = shuffle(movies.filter((movie) => !seenPosition.has(movie.id)))
   const previouslySeen = movies
-    .filter((movie) => recentPosition.has(movie.id))
-    .sort((left, right) => (recentPosition.get(left.id) ?? 0) - (recentPosition.get(right.id) ?? 0))
+    .filter((movie) => seenPosition.has(movie.id))
+    .sort((left, right) => (seenPosition.get(left.id) ?? 0) - (seenPosition.get(right.id) ?? 0))
   return [...unseen, ...previouslySeen]
 }
 
@@ -222,11 +225,12 @@ function rememberQuizMovies(movies: Movie[]) {
   if (!selectedIds.length) return
   try {
     const selectedSet = new Set(selectedIds)
-    const history = readRecentMovieIds().filter((id) => !selectedSet.has(id))
+    const history = readSeenMovieIds().filter((id) => !selectedSet.has(id))
     localStorage.setItem(
-      RECENT_MOVIES_STORAGE_KEY,
-      JSON.stringify([...history, ...selectedIds].slice(-RECENT_MOVIES_LIMIT)),
+      SEEN_MOVIES_STORAGE_KEY,
+      JSON.stringify([...history, ...selectedIds]),
     )
+    localStorage.removeItem(LEGACY_RECENT_MOVIES_STORAGE_KEY)
   } catch {
     // 隐私模式或存储空间不足时，仍然可以正常实时抽题。
   }
