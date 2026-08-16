@@ -1,4 +1,9 @@
 import type { Category, Difficulty, Movie, PlayerLevel, TestMode } from '../types'
+import {
+  isCuratedTmdbMovie,
+  manuallyBlockedTmdbIds,
+  nonFeatureTitlePattern,
+} from '../data/movieCuration'
 
 const TMDB_API_BASE = 'https://api.themoviedb.org/3'
 const TMDB_PROXY_BASE = '/api/tmdb'
@@ -11,7 +16,53 @@ const DOCUMENTARY_GENRE_ID = 99
 const MUSIC_GENRE_ID = 10402
 const TV_MOVIE_GENRE_ID = 10770
 const NARRATIVE_GENRE_IDS = new Set([12, 14, 16, 18, 27, 28, 35, 36, 37, 53, 80, 878, 9648, 10749, 10751, 10752])
-const NON_FEATURE_PATTERN = /演唱会|巡回演出|音乐现场|现场实录|演出实录|音乐会|粉丝见面会|concert|world tour|stadium tour|live at|live in|on stage|the tour/i
+
+type EraKey = '早期经典' | '黄金年代' | '录像带年代' | '数字转型' | '当代电影'
+type GenreBucket = '动画' | '科幻' | '悬疑' | '恐怖' | '喜剧' | '剧情及其他'
+
+interface EraWindow {
+  key: EraKey
+  from?: string
+  to: string
+}
+
+const currentCompletedYear = new Date().getFullYear() - 1
+const eraWindows: EraWindow[] = [
+  { key: '早期经典', to: '1969-12-31' },
+  { key: '黄金年代', from: '1970-01-01', to: '1989-12-31' },
+  { key: '录像带年代', from: '1990-01-01', to: '2004-12-31' },
+  { key: '数字转型', from: '2005-01-01', to: '2015-12-31' },
+  { key: '当代电影', from: '2016-01-01', to: `${currentCompletedYear}-12-31` },
+]
+
+const eraWeights: Record<PlayerLevel, Record<EraKey, number>> = {
+  入门菜鸟: { 早期经典: 0.05, 黄金年代: 0.1, 录像带年代: 0.25, 数字转型: 0.3, 当代电影: 0.3 },
+  略知一二: { 早期经典: 0.1, 黄金年代: 0.15, 录像带年代: 0.25, 数字转型: 0.25, 当代电影: 0.25 },
+  阅片无数: { 早期经典: 0.15, 黄金年代: 0.2, 录像带年代: 0.25, 数字转型: 0.2, 当代电影: 0.2 },
+}
+
+const classicEraWeights: Record<EraKey, number> = {
+  早期经典: 0.25,
+  黄金年代: 0.35,
+  录像带年代: 0.4,
+  数字转型: 0,
+  当代电影: 0,
+}
+
+const regionWeights: Record<PlayerLevel, Record<Movie['region'], number>> = {
+  入门菜鸟: { 华语: 0.2, 欧美: 0.6, 日韩: 0.2 },
+  略知一二: { 华语: 0.25, 欧美: 0.5, 日韩: 0.25 },
+  阅片无数: { 华语: 0.25, 欧美: 0.45, 日韩: 0.3 },
+}
+
+const genreWeights: Record<GenreBucket, number> = {
+  动画: 0.12,
+  科幻: 0.16,
+  悬疑: 0.16,
+  恐怖: 0.12,
+  喜剧: 0.16,
+  剧情及其他: 0.28,
+}
 
 interface TmdbListMovie {
   id: number
@@ -110,6 +161,46 @@ const shuffle = <T,>(items: readonly T[]) => {
   return output
 }
 
+function allocateTargets<Key extends string>(
+  total: number,
+  weights: Record<Key, number>,
+): Record<Key, number> {
+  const entries = Object.entries(weights) as [Key, number][]
+  const targets = Object.fromEntries(entries.map(([key, weight]) => [key, Math.floor(total * weight)])) as Record<Key, number>
+  let remaining = total - Object.values(targets).reduce((sum, value) => sum + value, 0)
+  const remainders = entries
+    .map(([key, weight]) => ({ key, remainder: total * weight - Math.floor(total * weight) }))
+    .sort((left, right) => right.remainder - left.remainder)
+  for (let index = 0; remaining > 0; index += 1, remaining -= 1) {
+    targets[remainders[index % remainders.length].key] += 1
+  }
+  return targets
+}
+
+function eraForReleaseDate(releaseDate?: string): EraKey {
+  const year = Number(releaseDate?.slice(0, 4)) || currentCompletedYear
+  if (year <= 1969) return '早期经典'
+  if (year <= 1989) return '黄金年代'
+  if (year <= 2004) return '录像带年代'
+  if (year <= 2015) return '数字转型'
+  return '当代电影'
+}
+
+function genreBucket(movie: TmdbListMovie): GenreBucket {
+  const genres = new Set(movie.genre_ids ?? [])
+  if (genres.has(16)) return '动画'
+  if (genres.has(878)) return '科幻'
+  if (genres.has(9648)) return '悬疑'
+  if (genres.has(27)) return '恐怖'
+  if (genres.has(35)) return '喜剧'
+  return '剧情及其他'
+}
+
+function quotaScore<Key extends string>(key: Key, targets: Record<Key, number>, counts: Record<Key, number>) {
+  const deficit = targets[key] - counts[key]
+  return deficit > 0 ? 220 + deficit * 35 : -Math.abs(deficit) * 28
+}
+
 const levelProfiles: Record<PlayerLevel, {
   sortBy: string
   minVotes: number
@@ -128,7 +219,7 @@ function discoverParams(
   category: Category,
   page: number,
   playerLevel: PlayerLevel,
-  languageOverride?: 'ja' | 'ko',
+  languageOverride?: string,
 ): Record<string, string | number | boolean> {
   const profile = levelProfiles[playerLevel]
   const common: Record<string, string | number | boolean> = {
@@ -164,7 +255,42 @@ function discoverParams(
   return common
 }
 
+function historicalVoteFloor(playerLevel: PlayerLevel, era: EraWindow, category: Category) {
+  const isEarly = era.to < '1970-01-01'
+  const isRegional = category === '华语电影' || category === '日韩电影'
+  const base = playerLevel === '入门菜鸟'
+    ? (isEarly ? 800 : 1_300)
+    : playerLevel === '略知一二'
+      ? (isEarly ? 260 : 380)
+      : (isEarly ? 160 : 220)
+  return isRegional ? Math.max(100, Math.round(base * 0.55)) : base
+}
+
+function eraDiscoverParams(
+  category: Category,
+  playerLevel: PlayerLevel,
+  era: EraWindow,
+  languageOverride?: string,
+) {
+  const params = discoverParams(category, 1, playerLevel, languageOverride)
+  params['primary_release_date.lte'] = category === '文艺经典' && era.to > '2005-12-31'
+    ? '2005-12-31'
+    : era.to
+  if (era.from) params['primary_release_date.gte'] = era.from
+  params['vote_count.gte'] = Math.min(Number(params['vote_count.gte']), historicalVoteFloor(playerLevel, era, category))
+  return params
+}
+
+function regionalDiscoverParams(language: 'zh' | 'ja' | 'ko', playerLevel: PlayerLevel) {
+  const params = discoverParams('综合', 1, playerLevel, language)
+  params.with_original_language = language
+  const regionalFloor = playerLevel === '入门菜鸟' ? 350 : playerLevel === '略知一二' ? 180 : 120
+  params['vote_count.gte'] = language === 'zh' ? Math.max(100, Math.round(regionalFloor * 0.6)) : regionalFloor
+  return params
+}
+
 function isFeatureFilm(movie: TmdbListMovie) {
+  if (manuallyBlockedTmdbIds.has(movie.id)) return false
   const genres = new Set(movie.genre_ids ?? [])
   if (genres.has(DOCUMENTARY_GENRE_ID) || genres.has(TV_MOVIE_GENRE_ID)) return false
 
@@ -172,8 +298,10 @@ function isFeatureFilm(movie: TmdbListMovie) {
   if (genres.has(MUSIC_GENRE_ID)) {
     const hasNarrativeGenre = [...genres].some((genre) => NARRATIVE_GENRE_IDS.has(genre))
     const searchableText = `${movie.title} ${movie.original_title} ${movie.overview ?? ''}`
-    if (!hasNarrativeGenre || NON_FEATURE_PATTERN.test(searchableText)) return false
+    if (!hasNarrativeGenre || nonFeatureTitlePattern.test(searchableText)) return false
   }
+
+  if (nonFeatureTitlePattern.test(`${movie.title} ${movie.original_title}`)) return false
 
   return Boolean(movie.release_date && movie.title && (movie.poster_path || movie.backdrop_path))
 }
@@ -246,6 +374,64 @@ function difficultyFromVotes(votes: number): Difficulty {
   if (votes >= 6_000) return '入门'
   if (votes >= 900) return '进阶'
   return '资深'
+}
+
+function selectBalancedMovies(
+  candidates: TmdbListMovie[],
+  mode: TestMode,
+  category: Category,
+  playerLevel: PlayerLevel,
+) {
+  const uniqueCandidates = [...new Map(candidates.map((movie) => [movie.title, movie])).values()]
+  const seenIds = new Set(readSeenMovieIds())
+  const historyPriority = new Map(uniqueCandidates.map((movie, index) => [movie.id, uniqueCandidates.length - index]))
+  const eraTargets = allocateTargets(mode, category === '文艺经典' ? classicEraWeights : eraWeights[playerLevel])
+  const eraCounts = Object.fromEntries(Object.keys(eraTargets).map((key) => [key, 0])) as Record<EraKey, number>
+  const regionTargets = allocateTargets(mode, regionWeights[playerLevel])
+  const regionCounts = Object.fromEntries(Object.keys(regionTargets).map((key) => [key, 0])) as Record<Movie['region'], number>
+  const genreTargets = allocateTargets(mode, genreWeights)
+  const genreCounts = Object.fromEntries(Object.keys(genreTargets).map((key) => [key, 0])) as Record<GenreBucket, number>
+  const remaining = [...uniqueCandidates]
+  const selected: TmdbListMovie[] = []
+
+  while (selected.length < mode && remaining.length) {
+    let bestIndex = 0
+    let bestScore = Number.NEGATIVE_INFINITY
+    remaining.forEach((movie, index) => {
+      const era = eraForReleaseDate(movie.release_date)
+      const region = regionFromLanguage(movie.original_language)
+      const bucket = genreBucket(movie)
+      const freshnessBonus = seenIds.has(movie.id) ? 0 : 5_000
+      const curatedBonus = isCuratedTmdbMovie(movie.id)
+        ? playerLevel === '入门菜鸟' ? 95 : playerLevel === '略知一二' ? 70 : 45
+        : 0
+      const comprehensiveScore = category === '综合'
+        ? quotaScore(region, regionTargets, regionCounts) * 0.8
+          + quotaScore(bucket, genreTargets, genreCounts) * 0.65
+        : 0
+      const score = freshnessBonus
+        + quotaScore(era, eraTargets, eraCounts)
+        + comprehensiveScore
+        + curatedBonus
+        + featureQualityScore(movie) * 0.2
+        + (historyPriority.get(movie.id) ?? 0) * 0.25
+        + Math.random() * 12
+      if (score > bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    })
+
+    const [movie] = remaining.splice(bestIndex, 1)
+    selected.push(movie)
+    eraCounts[eraForReleaseDate(movie.release_date)] += 1
+    if (category === '综合') {
+      regionCounts[regionFromLanguage(movie.original_language)] += 1
+      genreCounts[genreBucket(movie)] += 1
+    }
+  }
+
+  return shuffle(selected)
 }
 
 const imageUrl = (path: string, size: 'w342' | 'w500' | 'w780' | 'original') =>
@@ -406,48 +592,67 @@ async function discoverQuizMovies(
   playerLevel: PlayerLevel,
   credential: string,
 ) {
-  const pageCount = mode === 10 ? 4 : mode === 20 ? 6 : 8
-  const cacheKey = `${category}:${playerLevel}:${pageCount}`
+  const pageCount = mode === 10 ? 3 : mode === 20 ? 4 : 5
+  const cacheKey = `balanced-v2:${category}:${playerLevel}:${pageCount}`
   const cached = discoveryCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return cached.movies
 
   const profile = levelProfiles[playerLevel]
-  let responses: DiscoverResponse[]
+  const requests: Promise<DiscoverResponse>[] = []
   if (category === '日韩电影') {
-    const [japaneseSeed, koreanSeed] = await Promise.all([
-      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ja')),
-      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ko')),
-    ])
+    requests.push(
+      tmdbRequest('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ja')),
+      tmdbRequest('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ko')),
+    )
     const remainingCount = Math.max(0, pageCount - 2)
-    const japanesePages = randomPages(Math.min(japaneseSeed.total_pages, profile.maxPage), Math.ceil(remainingCount / 2))
-    const koreanPages = randomPages(Math.min(koreanSeed.total_pages, profile.maxPage), Math.floor(remainingCount / 2))
-    const extraResponses = await Promise.all([
-      ...japanesePages.map((page) => tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, page, playerLevel, 'ja'))),
-      ...koreanPages.map((page) => tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, page, playerLevel, 'ko'))),
-    ])
-    responses = [japaneseSeed, koreanSeed, ...extraResponses]
+    const extraPages = randomPages(profile.maxPage, remainingCount)
+    requests.push(...extraPages.map((page, index) => tmdbRequest(
+      '/discover/movie',
+      credential,
+      discoverParams(category, page, playerLevel, index % 2 === 0 ? 'ja' : 'ko'),
+    )))
   } else {
-    const seed = await tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel))
-    const extraPages = randomPages(Math.min(seed.total_pages, profile.maxPage), pageCount - 1)
-    const extraResponses = await Promise.all(extraPages.map((page) => tmdbRequest<DiscoverResponse>(
+    requests.push(tmdbRequest('/discover/movie', credential, discoverParams(category, 1, playerLevel)))
+    const extraPages = randomPages(profile.maxPage, pageCount - 1)
+    requests.push(...extraPages.map((page) => tmdbRequest(
       '/discover/movie',
       credential,
       discoverParams(category, page, playerLevel),
     )))
-    responses = [seed, ...extraResponses]
   }
+
+  const relevantEraWeights = category === '文艺经典' ? classicEraWeights : eraWeights[playerLevel]
+  const relevantEras = eraWindows.filter((era) => relevantEraWeights[era.key] > 0)
+  requests.push(...relevantEras.map((era, index) => tmdbRequest(
+    '/discover/movie',
+    credential,
+    eraDiscoverParams(
+      category,
+      playerLevel,
+      era,
+      category === '日韩电影' ? (index % 2 === 0 ? 'ja' : 'ko') : undefined,
+    ),
+  )))
+
+  if (category === '综合') {
+    requests.push(...(['zh', 'ja', 'ko'] as const).map((language) => tmdbRequest(
+      '/discover/movie',
+      credential,
+      regionalDiscoverParams(language, playerLevel),
+    )))
+  }
+
+  const settledResponses = await Promise.allSettled(requests)
+  const responses = settledResponses.flatMap((response) => response.status === 'fulfilled' ? [response.value] : [])
+  if (!responses.length) throw new Error('TMDB 候选片单暂时无法加载，请稍后重试。')
+
   const unique = [...new Map(
     responses.flatMap((response) => response.results)
       .filter(isFeatureFilm)
       .map((movie) => [movie.id, movie]),
   ).values()]
-  const qualityPool = playerLevel === '阅片无数'
-    ? unique
-        .sort((left, right) => featureQualityScore(right) - featureQualityScore(left))
-        .slice(0, Math.max(mode * 5, 100))
-    : unique
-  discoveryCache.set(cacheKey, { expiresAt: Date.now() + DISCOVERY_CACHE_MS, movies: qualityPool })
-  return qualityPool
+  discoveryCache.set(cacheKey, { expiresAt: Date.now() + DISCOVERY_CACHE_MS, movies: unique })
+  return unique
 }
 
 export async function createTmdbQuiz(
@@ -458,8 +663,9 @@ export async function createTmdbQuiz(
 ): Promise<Movie[]> {
   const discovered = await discoverQuizMovies(mode, category, playerLevel, credential)
   const prioritized = prioritizeUnseenMovies(discovered)
+  const balanced = selectBalancedMovies(prioritized, mode, category, playerLevel)
   const quiz = [...new Map(
-    prioritized
+    balanced
       .map((item, index) => makeQuizMovie(item, discovered, index, playerLevel))
       .filter((movie): movie is Movie => Boolean(movie))
       .map((movie) => [movie.title, movie]),
