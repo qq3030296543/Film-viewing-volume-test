@@ -1217,23 +1217,27 @@ body::before {
 .cinema-quiz .answer-status strong { color: #fff; font-family: var(--font-display); font-size: 23px; font-weight: 400; }
 .cinema-quiz .movie-synopsis { color: #aeb5bb; line-height: 1.75; }
 .cinema-quiz .fact-line { color: #c3cbd0; }
-.cinema-quiz .answer-actions { display: grid; grid-template-columns: minmax(170px, .62fr) minmax(220px, 1fr); gap: 10px; }
 .cinema-quiz .movie-detail-link {
-  min-height: 56px;
-  padding: 0 20px;
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 999px;
+  min-height: 66px;
+  margin: 0 0 12px;
+  padding: 12px 18px;
+  border: 1px solid rgba(159,226,240,.3);
+  border-left: 3px solid #9edfec;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  color: rgba(255,255,255,.82);
-  background: rgba(255,255,255,.035);
+  color: rgba(255,255,255,.9);
+  background: rgba(158,223,236,.07);
   font: 500 12px var(--font-body);
   text-decoration: none;
   transition: border-color .2s ease, color .2s ease, background .2s ease, transform .2s ease;
 }
+.cinema-quiz .movie-detail-link > span { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .cinema-quiz .movie-detail-link small { color: #9edfec; font: 8px ui-monospace, monospace; letter-spacing: .12em; }
+.cinema-quiz .movie-detail-link strong { overflow: hidden; font-size: 13px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.cinema-quiz .movie-detail-link em { flex: none; color: rgba(255,255,255,.52); font: 9px ui-monospace, monospace; font-style: normal; letter-spacing: .06em; }
 .cinema-quiz .movie-detail-link:hover { border-color: rgba(191,239,255,.62); color: #fff; background: rgba(191,239,255,.075); transform: translateY(-1px); }
 .cinema-quiz .movie-detail-link:focus-visible { outline: 2px solid #bfefff; outline-offset: 3px; }
 .cinema-quiz .next-button {
@@ -1285,7 +1289,8 @@ body::before {
   .cinema-quiz .quiz-question-card { width: 100%; padding: 27px 20px; border-radius: 17px; }
   .cinema-quiz .question-panel h1 { font-size: clamp(38px, 12vw, 52px); }
   .cinema-quiz .question-lead { font-size: 12px; }
-  .cinema-quiz .answer-actions { grid-template-columns: 1fr; }
+  .cinema-quiz .movie-detail-link { align-items: flex-start; }
+  .cinema-quiz .movie-detail-link em { display: none; }
   .cinema-quiz .quiz-footer { padding: 14px 16px; }
 }
 
