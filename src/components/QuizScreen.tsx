@@ -6,6 +6,8 @@ import { PosterCard } from './PosterCard'
 import { ProgressBar } from './ProgressBar'
 import { ResilientPosterImage } from './ResilientPosterImage'
 import { TmdbAttribution } from './TmdbAttribution'
+import { difficultyLabel, genreLabel, levelLabel, regionLabel, useLanguage } from '../i18n'
+import { LanguageSwitch } from './LanguageSwitch'
 
 interface Props {
   session: QuizSession
@@ -15,6 +17,8 @@ interface Props {
 }
 
 export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
+  const { language } = useLanguage()
+  const en = language === 'en'
   const movie = session.movies[session.currentIndex]
   const [selected, setSelected] = useState<string | null>(null)
   const options = useMemo(() => shuffledOptions([movie.title, ...movie.recognitionDistractors]), [movie.id])
@@ -24,8 +28,9 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
   )
   const answered = selected !== null
   const correct = selected === movie.title
-  const movieDetailsUrl = movie.tmdbUrl
-    ?? `https://www.themoviedb.org/search?query=${encodeURIComponent(movie.originalTitle || movie.title)}`
+  const movieDetailsUrl = movie.tmdbId
+    ? `https://www.themoviedb.org/movie/${movie.tmdbId}?language=${en ? 'en-US' : 'zh-CN'}`
+    : `https://www.themoviedb.org/search?query=${encodeURIComponent(movie.originalTitle || movie.title)}&language=${en ? 'en-US' : 'zh-CN'}`
 
   const selectOption = (option: string) => {
     if (!answered) setSelected(option)
@@ -55,13 +60,14 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
       <div className="quiz-film-light" aria-hidden="true" />
 
       <header className="quiz-header cinema-quiz-header">
-        <button className="brand-button" onClick={onExit} aria-label="返回首页">
-          光影鉴赏局<sup>®</sup>
+        <button className="brand-button" onClick={onExit} aria-label={en ? 'Return home' : '返回首页'}>
+          {en ? 'Cine Memory Bureau' : '光影鉴赏局'}<sup>®</sup>
         </button>
         <ProgressBar current={session.currentIndex + 1} total={session.mode} />
         <div className="quiz-header-actions">
-          <button className="liquid-glass" onClick={onExit}>返回首页</button>
-          <button className="liquid-glass" onClick={onRestart}>重新测试</button>
+          <LanguageSwitch compact />
+          <button className="liquid-glass" onClick={onExit}>{en ? 'Home' : '返回首页'}</button>
+          <button className="liquid-glass" onClick={onRestart}>{en ? 'Restart' : '重新测试'}</button>
         </div>
       </header>
 
@@ -73,11 +79,11 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
 
         <section className="question-panel liquid-glass quiz-question-card">
           <div className="question-kicker">
-            <span>{session.playerLevel ?? '略知一二'} · VISUAL TEST</span>
-            <span className={`difficulty ${movie.difficulty}`}>{movie.difficulty}</span>
+            <span>{levelLabel(session.playerLevel ?? '略知一二', language)} · VISUAL TEST</span>
+            <span className={`difficulty ${movie.difficulty}`}>{difficultyLabel(movie.difficulty, language)}</span>
           </div>
-          <h1>这一帧光影，来自哪部电影？</h1>
-          <p className="question-lead">片名信息已被隐藏。凭你的电影记忆作答，也可以按数字键 1—4 快速选择。</p>
+          <h1>{en ? 'Which film is this frame from?' : '这一帧光影，来自哪部电影？'}</h1>
+          <p className="question-lead">{en ? 'The title is hidden. Trust your cinema memory, or press number keys 1—4 to answer.' : '片名信息已被隐藏。凭你的电影记忆作答，也可以按数字键 1—4 快速选择。'}</p>
 
           <OptionList options={options} selected={selected} answer={movie.title} onSelect={selectOption} />
 
@@ -86,13 +92,13 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
               <div className={`answer-status ${correct ? 'correct' : 'wrong'}`}>
                 <span>{correct ? '✓' : '×'}</span>
                 <div>
-                  <small>{correct ? '识别正确 · +1' : '识别未命中'}</small>
-                  <strong>{correct ? '你的电影记忆很准确' : `正确答案是《${movie.title}》`}</strong>
+                  <small>{correct ? (en ? 'CORRECT · +1' : '识别正确 · +1') : (en ? 'NOT RECOGNIZED' : '识别未命中')}</small>
+                  <strong>{correct ? (en ? 'Your cinema memory is sharp' : '你的电影记忆很准确') : (en ? `The correct answer is “${movie.title}”` : `正确答案是《${movie.title}》`)}</strong>
                 </div>
               </div>
               <p className="movie-synopsis">{movie.synopsis}</p>
               <div className="fact-line">
-                <span>{movie.year}</span><span>{movie.region}</span><span>{movie.genres.join(' · ')}</span>
+                <span>{movie.year}</span><span>{regionLabel(movie.region, language)}</span><span>{movie.genres.map((genre) => genreLabel(genre, language)).join(' · ')}</span>
                 {movie.rating !== undefined && <span>TMDB {movie.rating.toFixed(1)}</span>}
               </div>
               <a
@@ -100,13 +106,13 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
                 href={movieDetailsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`在 TMDB 查看《${movie.title}》的电影资料（新标签页打开）`}
+                aria-label={en ? `View ${movie.title} on TMDB in a new tab` : `在 TMDB 查看《${movie.title}》的电影资料（新标签页打开）`}
               >
-                <span><small>电影详细资料 · OFFICIAL LINK</small><strong>在 TMDB 查看《{movie.title}》</strong></span>
+                <span><small>{en ? 'FILM DETAILS · OFFICIAL LINK' : '电影详细资料 · OFFICIAL LINK'}</small><strong>{en ? `View “${movie.title}” on TMDB` : `在 TMDB 查看《${movie.title}》`}</strong></span>
                 <em>themoviedb.org ↗</em>
               </a>
               <button className="primary-button next-button" onClick={finish}>
-                {session.currentIndex + 1 === session.mode ? '查看我的段位' : '下一部电影'} <span>→</span>
+                {session.currentIndex + 1 === session.mode ? (en ? 'Reveal My Rank' : '查看我的段位') : (en ? 'Next Film' : '下一部电影')} <span>→</span>
               </button>
             </div>
           )}
@@ -114,8 +120,8 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
       </div>
 
       <footer className="quiz-footer">
-        <span>{session.playerLevel ?? '略知一二'} · QUESTION {session.currentIndex + 1} / {session.mode}</span>
-        {movie.source === 'tmdb' ? <TmdbAttribution compact /> : <span>ESC 返回首页 · 1—4 选择答案</span>}
+        <span>{levelLabel(session.playerLevel ?? '略知一二', language)} · QUESTION {session.currentIndex + 1} / {session.mode}</span>
+        {movie.source === 'tmdb' ? <TmdbAttribution compact /> : <span>{en ? 'ESC HOME · 1—4 SELECT' : 'ESC 返回首页 · 1—4 选择答案'}</span>}
       </footer>
     </main>
   )

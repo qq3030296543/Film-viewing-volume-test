@@ -1283,7 +1283,7 @@ body::before {
   .cinema-quiz .brand-button { font-size: 22px; }
   .cinema-quiz .quiz-header .progress-wrap { grid-column: 1 / -1; grid-row: 2; }
   .cinema-quiz .quiz-header-actions { position: static; }
-  .cinema-quiz .quiz-header-actions button:first-child { display: none; }
+  .cinema-quiz .quiz-header-actions > button:first-of-type { display: none; }
   .cinema-quiz .quiz-layout { width: calc(100% - 28px); display: flex; flex-direction: column; padding: 28px 0 40px; gap: 30px; }
   .cinema-quiz .poster-card.poster-showcase { width: min(100%, 360px); height: auto; min-height: 0; aspect-ratio: 2 / 3; }
   .cinema-quiz .quiz-question-card { width: 100%; padding: 27px 20px; border-radius: 17px; }
@@ -1423,3 +1423,92 @@ body::before {
 .result-shell .result-actions button { border-radius: 999px; }
 .result-shell .result-actions .primary-button { background: #f5f8f8; color: #06141b; }
 .result-shell .result-actions .secondary-button { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.025); color: rgba(255,255,255,.74); }
+
+/* Persistent bilingual control */
+.language-switch {
+  position: relative;
+  z-index: 8;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  min-width: 92px;
+  padding: 3px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(3,16,24,.5);
+  box-shadow: inset 0 1px rgba(255,255,255,.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.language-switch.compact { min-width: 76px; }
+.language-switch button,
+.cinema-quiz .quiz-header-actions .language-switch button {
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  color: rgba(255,255,255,.48);
+  background: transparent;
+  font: 500 10px var(--font-body);
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.language-switch.compact button { height: 26px; padding: 0 7px; font-size: 9px; }
+.language-switch button:hover { color: #fff; }
+.language-switch button.active {
+  color: #07141b;
+  background: #edf8fa;
+  box-shadow: 0 4px 16px rgba(0,0,0,.22);
+}
+.language-switch button:focus-visible { outline: 2px solid #bfefff; outline-offset: 2px; }
+.cinematic-nav-actions,
+.difficulty-header-actions,
+.result-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.difficulty-header-actions { justify-self: end; }
+.result-header-actions { color: rgba(255,255,255,.48); }
+.loading-language { position: fixed; top: 24px; right: 28px; z-index: 10; }
+.home-mobile-language { display: none; }
+
+@media (max-width: 760px) {
+  .cinematic-nav { width: calc(100% - 28px); gap: 10px; }
+  .cinematic-logo { max-width: 50vw; font-size: 21px; }
+  .cinematic-nav-links { display: none; }
+  .cinematic-nav-actions { gap: 7px; }
+  .cinematic-nav-actions .nav-journey-button { min-width: 0; padding-inline: 13px; font-size: 10px; }
+  .cinema-quiz .quiz-header-actions { align-items: center; }
+  .cinema-quiz .quiz-header-actions .language-switch button { display: block; }
+  .result-header-actions > span { display: none; }
+  .difficulty-header-actions { gap: 6px; }
+  .difficulty-header-actions .difficulty-back { padding-inline: 10px; }
+}
+
+@media (max-width: 500px) {
+  .difficulty-header-actions .difficulty-back { font-size: 0; }
+  .difficulty-header-actions .difficulty-back::first-letter { font-size: 13px; }
+  .result-shell .brand-static { font-size: 20px; }
+  .language-switch { min-width: 78px; }
+}
+
+@media (max-width: 560px) {
+  html[lang="en"] .cinematic-home { min-height: 1080px; }
+  html[lang="en"] .cinematic-hero { padding-inline: 18px; }
+  html[lang="en"] .cinematic-hero h1 {
+    width: 100%;
+    max-width: 100%;
+    font-size: clamp(40px, 11.5vw, 48px);
+    line-height: .98;
+    overflow-wrap: normal;
+  }
+  html[lang="en"] .cinematic-copy { width: min(100%, 300px); max-width: 300px; text-wrap: wrap; overflow-wrap: break-word; }
+  html[lang="en"] .cinematic-config { width: calc(100vw - 24px); max-width: calc(100vw - 24px); grid-template-columns: minmax(0, 1fr) !important; overflow: hidden; contain: inline-size; }
+  html[lang="en"] .cinematic-config > * { width: 100%; min-width: 0; }
+  html[lang="en"] .config-heading { flex-direction: column; align-items: flex-start; gap: 7px; }
+  html[lang="en"] .config-heading strong { flex: none; max-width: 100%; font-size: 18px; text-align: left; white-space: normal; }
+  html[lang="en"] .cinematic-modes { min-width: 0; }
+  html[lang="en"] .cinematic-modes strong { font-size: 11px; }
+  html[lang="en"] .cinematic-modes small { font-size: 8px; }
+  .cinematic-nav-actions .nav-journey-button { display: none; }
+  .cinematic-nav-actions .language-switch { display: none; }
+  .home-mobile-language { position: fixed; top: 18px; right: 16px; z-index: 20; display: block; }
+}

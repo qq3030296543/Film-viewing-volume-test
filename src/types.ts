@@ -1,5 +1,7 @@
 export type TestMode = 10 | 20 | 30
 
+export type Language = 'zh' | 'en'
+
 export type Category =
   | '综合'
   | '华语电影'

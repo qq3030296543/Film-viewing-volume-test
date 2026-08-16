@@ -1,4 +1,4 @@
-import type { Category, Difficulty, Movie, PlayerLevel, TestMode } from '../types'
+import type { Category, Difficulty, Language, Movie, PlayerLevel, TestMode } from '../types'
 import {
   isCuratedTmdbMovie,
   manuallyBlockedTmdbIds,
@@ -110,6 +110,8 @@ const genreById: Record<number, string> = {
   878: '科幻', 9648: '悬疑', 10402: '音乐', 10749: '爱情', 10751: '家庭',
 }
 
+const tmdbLocale = (language: Language) => language === 'zh' ? 'zh-CN' : 'en-US'
+
 const discoveryCache = new Map<string, { expiresAt: number; movies: TmdbListMovie[] }>()
 const textlessPosterCache = new Map<number, string[]>()
 
@@ -167,7 +169,7 @@ function allocateTargets<Key extends string>(
 ): Record<Key, number> {
   const entries = Object.entries(weights) as [Key, number][]
   const targets = Object.fromEntries(entries.map(([key, weight]) => [key, Math.floor(total * weight)])) as Record<Key, number>
-  let remaining = total - Object.values(targets).reduce((sum, value) => sum + value, 0)
+  let remaining = total - (Object.values(targets) as number[]).reduce((sum, value) => sum + value, 0)
   const remainders = entries
     .map(([key, weight]) => ({ key, remainder: total * weight - Math.floor(total * weight) }))
     .sort((left, right) => right.remainder - left.remainder)
@@ -220,10 +222,11 @@ function discoverParams(
   page: number,
   playerLevel: PlayerLevel,
   languageOverride?: string,
+  language: Language = 'zh',
 ): Record<string, string | number | boolean> {
   const profile = levelProfiles[playerLevel]
   const common: Record<string, string | number | boolean> = {
-    language: 'zh-CN',
+    language: tmdbLocale(language),
     include_adult: false,
     include_video: false,
     page,
@@ -271,8 +274,9 @@ function eraDiscoverParams(
   playerLevel: PlayerLevel,
   era: EraWindow,
   languageOverride?: string,
+  language: Language = 'zh',
 ) {
-  const params = discoverParams(category, 1, playerLevel, languageOverride)
+  const params = discoverParams(category, 1, playerLevel, languageOverride, language)
   params['primary_release_date.lte'] = category === '文艺经典' && era.to > '2005-12-31'
     ? '2005-12-31'
     : era.to
@@ -281,11 +285,11 @@ function eraDiscoverParams(
   return params
 }
 
-function regionalDiscoverParams(language: 'zh' | 'ja' | 'ko', playerLevel: PlayerLevel) {
-  const params = discoverParams('综合', 1, playerLevel, language)
-  params.with_original_language = language
+function regionalDiscoverParams(originalLanguage: 'zh' | 'ja' | 'ko', playerLevel: PlayerLevel, language: Language) {
+  const params = discoverParams('综合', 1, playerLevel, originalLanguage, language)
+  params.with_original_language = originalLanguage
   const regionalFloor = playerLevel === '入门菜鸟' ? 350 : playerLevel === '略知一二' ? 180 : 120
-  params['vote_count.gte'] = language === 'zh' ? Math.max(100, Math.round(regionalFloor * 0.6)) : regionalFloor
+  params['vote_count.gte'] = originalLanguage === 'zh' ? Math.max(100, Math.round(regionalFloor * 0.6)) : regionalFloor
   return params
 }
 
@@ -481,6 +485,7 @@ function makeQuizMovie(
   all: TmdbListMovie[],
   index: number,
   playerLevel: PlayerLevel,
+  language: Language,
 ): Movie | null {
   const primaryPath = item.backdrop_path ?? item.poster_path
   if (!primaryPath || !item.title) return null
@@ -508,23 +513,27 @@ function makeQuizMovie(
     year,
     region: regionFromLanguage(item.original_language),
     genres: genres.length ? genres : ['剧情'],
-    director: 'TMDB 实时资料',
+    director: language === 'zh' ? 'TMDB 实时资料' : 'TMDB live data',
     imageUrl: artworkUrls[0] ?? imageUrl(primaryPath, 'w500'),
     imageUrls: [...new Set(artworkUrls)],
-    imageAlt: 'TMDB 实时电影画面',
+    imageAlt: language === 'zh' ? 'TMDB 实时电影画面' : 'Live movie artwork from TMDB',
     accent: index % 3 === 0 ? ['#263c4a', '#c48a54'] : index % 3 === 1 ? ['#552c32', '#d3aa66'] : ['#2f4639', '#b8a56d'],
     recognitionDistractors: distractors,
-    synopsis: item.overview?.trim() || '这部电影的中文简介尚未补全，详细资料以 TMDB 最新记录为准。',
+    synopsis: item.overview?.trim() || (language === 'zh'
+      ? '这部电影的中文简介尚未补全，详细资料以 TMDB 最新记录为准。'
+      : 'An English synopsis is not available yet. See the latest TMDB record for full details.'),
     question: '',
     options: [],
     answer: item.title,
-    explanation: '资料于测试开始时从 TMDB 实时同步。',
+    explanation: language === 'zh' ? '资料于测试开始时从 TMDB 实时同步。' : 'Data synced live from TMDB when the test began.',
     spoiler: false,
     difficulty: difficultyFromVotes(votes),
-    recommendation: `TMDB ${rating.toFixed(1)} 分 · ${votes.toLocaleString('zh-CN')} 人评分 · ${playerLevel}片单。`,
+    recommendation: language === 'zh'
+      ? `TMDB ${rating.toFixed(1)} 分 · ${votes.toLocaleString('zh-CN')} 人评分 · ${playerLevel}片单。`
+      : `TMDB ${rating.toFixed(1)} · ${votes.toLocaleString('en-US')} ratings · ${playerLevel} selection.`,
     source: 'tmdb',
     tmdbId: item.id,
-    tmdbUrl: `https://www.themoviedb.org/movie/${item.id}`,
+    tmdbUrl: `https://www.themoviedb.org/movie/${item.id}?language=${tmdbLocale(language)}`,
     rating,
     voteCount: votes,
     lastSyncedAt: Date.now(),
@@ -581,7 +590,7 @@ export async function hydrateTmdbMovieArtwork(movie: Movie, credential: string):
     ...movie,
     imageUrl: urls[0],
     imageUrls: [...new Set([...urls, ...(movie.imageUrls ?? [])])],
-    imageAlt: '不含片名的完整电影海报',
+    imageAlt: movie.imageAlt,
     textlessArtwork: true,
   }
 }
@@ -591,9 +600,10 @@ async function discoverQuizMovies(
   category: Category,
   playerLevel: PlayerLevel,
   credential: string,
+  language: Language,
 ) {
   const pageCount = mode === 10 ? 3 : mode === 20 ? 4 : 5
-  const cacheKey = `balanced-v2:${category}:${playerLevel}:${pageCount}`
+  const cacheKey = `balanced-v3:${language}:${category}:${playerLevel}:${pageCount}`
   const cached = discoveryCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return cached.movies
 
@@ -601,29 +611,29 @@ async function discoverQuizMovies(
   const requests: Promise<DiscoverResponse>[] = []
   if (category === '日韩电影') {
     requests.push(
-      tmdbRequest('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ja')),
-      tmdbRequest('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ko')),
+      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ja', language)),
+      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ko', language)),
     )
     const remainingCount = Math.max(0, pageCount - 2)
     const extraPages = randomPages(profile.maxPage, remainingCount)
-    requests.push(...extraPages.map((page, index) => tmdbRequest(
+    requests.push(...extraPages.map((page, index) => tmdbRequest<DiscoverResponse>(
       '/discover/movie',
       credential,
-      discoverParams(category, page, playerLevel, index % 2 === 0 ? 'ja' : 'ko'),
+      discoverParams(category, page, playerLevel, index % 2 === 0 ? 'ja' : 'ko', language),
     )))
   } else {
-    requests.push(tmdbRequest('/discover/movie', credential, discoverParams(category, 1, playerLevel)))
+    requests.push(tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, undefined, language)))
     const extraPages = randomPages(profile.maxPage, pageCount - 1)
-    requests.push(...extraPages.map((page) => tmdbRequest(
+    requests.push(...extraPages.map((page) => tmdbRequest<DiscoverResponse>(
       '/discover/movie',
       credential,
-      discoverParams(category, page, playerLevel),
+      discoverParams(category, page, playerLevel, undefined, language),
     )))
   }
 
   const relevantEraWeights = category === '文艺经典' ? classicEraWeights : eraWeights[playerLevel]
   const relevantEras = eraWindows.filter((era) => relevantEraWeights[era.key] > 0)
-  requests.push(...relevantEras.map((era, index) => tmdbRequest(
+  requests.push(...relevantEras.map((era, index) => tmdbRequest<DiscoverResponse>(
     '/discover/movie',
     credential,
     eraDiscoverParams(
@@ -631,14 +641,15 @@ async function discoverQuizMovies(
       playerLevel,
       era,
       category === '日韩电影' ? (index % 2 === 0 ? 'ja' : 'ko') : undefined,
+      language,
     ),
   )))
 
   if (category === '综合') {
-    requests.push(...(['zh', 'ja', 'ko'] as const).map((language) => tmdbRequest(
+    requests.push(...(['zh', 'ja', 'ko'] as const).map((originalLanguage) => tmdbRequest<DiscoverResponse>(
       '/discover/movie',
       credential,
-      regionalDiscoverParams(language, playerLevel),
+      regionalDiscoverParams(originalLanguage, playerLevel, language),
     )))
   }
 
@@ -660,18 +671,21 @@ export async function createTmdbQuiz(
   category: Category,
   playerLevel: PlayerLevel,
   credential: string,
+  language: Language = 'zh',
 ): Promise<Movie[]> {
-  const discovered = await discoverQuizMovies(mode, category, playerLevel, credential)
+  const discovered = await discoverQuizMovies(mode, category, playerLevel, credential, language)
   const prioritized = prioritizeUnseenMovies(discovered)
   const balanced = selectBalancedMovies(prioritized, mode, category, playerLevel)
   const quiz = [...new Map(
     balanced
-      .map((item, index) => makeQuizMovie(item, discovered, index, playerLevel))
+      .map((item, index) => makeQuizMovie(item, discovered, index, playerLevel, language))
       .filter((movie): movie is Movie => Boolean(movie))
       .map((movie) => [movie.title, movie]),
   ).values()].slice(0, mode)
 
-  if (quiz.length < mode) throw new Error(`TMDB 返回的可用电影不足：需要 ${mode} 部，得到 ${quiz.length} 部。`)
+  if (quiz.length < mode) throw new Error(language === 'zh'
+    ? `TMDB 返回的可用电影不足：需要 ${mode} 部，得到 ${quiz.length} 部。`
+    : `TMDB returned too few usable movies: ${quiz.length} of ${mode}.`)
   rememberQuizMovies(quiz)
 
   // 只阻塞等待第一题的无字海报；其余题目由 App 在用户答题时后台预取。

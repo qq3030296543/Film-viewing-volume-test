@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Movie } from '../types'
 import { moviePosterCandidates } from '../utils/posters'
+import { difficultyLabel, regionLabel, useLanguage } from '../i18n'
 
 export function PosterCard({ movie }: { movie: Movie }) {
+  const { language } = useLanguage()
+  const en = language === 'en'
   const candidates = useMemo(() => moviePosterCandidates(movie), [movie])
   const [sourceIndex, setSourceIndex] = useState(0)
   const [artOrientation, setArtOrientation] = useState<'unknown' | 'portrait' | 'landscape'>('unknown')
@@ -22,14 +25,14 @@ export function PosterCard({ movie }: { movie: Movie }) {
             key={source}
             className="poster-main-image"
             src={source}
-            alt="待识别的电影海报"
+            alt={en ? 'Movie poster to identify' : '待识别的电影海报'}
             decoding="async"
             onLoad={(event) => setArtOrientation(event.currentTarget.naturalHeight / event.currentTarget.naturalWidth > 1.25 ? 'portrait' : 'landscape')}
             onError={() => { setArtOrientation('unknown'); setSourceIndex((current) => current + 1) }}
           />
         </div>
       ) : (
-        <div className="poster-fallback" role="img" aria-label="电影海报正在恢复">
+        <div className="poster-fallback" role="img" aria-label={en ? 'Recovering movie artwork' : '电影海报正在恢复'}>
           <span className="fallback-ring" />
           <span className="fallback-mark">◆</span>
           <small>FILM ARCHIVE · IMAGE RECOVERY</small>
@@ -39,7 +42,7 @@ export function PosterCard({ movie }: { movie: Movie }) {
       {!movie.textlessArtwork && artOrientation === 'portrait' && (
         <div className="artwork-preparing" role="status">
           <small>TEXTLESS POSTER</small>
-          <strong>正在准备无字海报</strong>
+          <strong>{en ? 'Preparing textless artwork' : '正在准备无字海报'}</strong>
         </div>
       )}
 
@@ -48,8 +51,8 @@ export function PosterCard({ movie }: { movie: Movie }) {
       <span className="title-guard title-guard-bottom" aria-hidden="true"><i>CLASSIFIED TITLE</i></span>
       <figcaption>
         <small>VISUAL ARCHIVE // {movie.id.slice(0, 6).toUpperCase()}</small>
-        <strong>片名已隐藏</strong>
-        <span>{movie.region} · {movie.difficulty}难度</span>
+        <strong>{en ? 'Title concealed' : '片名已隐藏'}</strong>
+        <span>{regionLabel(movie.region, language)} · {difficultyLabel(movie.difficulty, language)}{en ? '' : '难度'}</span>
       </figcaption>
       {movie.source === 'tmdb' && <span className="live-source-badge"><i /> TMDB LIVE</span>}
     </figure>

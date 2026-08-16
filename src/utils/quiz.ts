@@ -1,5 +1,5 @@
 import { movies } from '../data/movies'
-import type { AnswerRecord, Category, CategoryScore, Movie, PlayerLevel, QuizResult, QuizSession, TestMode } from '../types'
+import type { AnswerRecord, Category, CategoryScore, Language, Movie, PlayerLevel, QuizResult, QuizSession, TestMode } from '../types'
 
 export const categories: Category[] = ['综合', '华语电影', '欧美电影', '日韩电影', '动画电影', '科幻', '悬疑', '恐怖', '喜剧', '文艺经典']
 
@@ -45,14 +45,21 @@ const localDistractorScore = (target: Movie, candidate: Movie, level: PlayerLeve
     - Math.min(yearDistance, 40) * weights.year
 }
 
-const withLocalDistractors = (selected: Movie[], level: PlayerLevel) => selected.map((movie) => {
+const withLocalDistractors = (selected: Movie[], level: PlayerLevel, language: Language) => selected.map((movie) => {
   const candidates = shuffle(movies.filter((candidate) => candidate.id !== movie.id && candidate.title !== movie.title))
     .sort((left, right) => localDistractorScore(movie, right, level) - localDistractorScore(movie, left, level))
-    .map((candidate) => candidate.title)
-  return { ...movie, recognitionDistractors: [...new Set(candidates)].slice(0, 3) }
+    .map((candidate) => language === 'en' ? candidate.originalTitle : candidate.title)
+  return {
+    ...movie,
+    title: language === 'en' ? movie.originalTitle : movie.title,
+    recognitionDistractors: [...new Set(candidates)].slice(0, 3),
+    synopsis: language === 'en'
+      ? 'This title comes from the built-in offline collection. Open its TMDB page after answering for full details.'
+      : movie.synopsis,
+  }
 })
 
-export const createQuiz = (mode: TestMode, category: Category, playerLevel: PlayerLevel): Movie[] => {
+export const createQuiz = (mode: TestMode, category: Category, playerLevel: PlayerLevel, language: Language = 'zh'): Movie[] => {
   const categoryMovies = movies.filter((movie) => matchesCategory(movie, category))
   const ordered = difficultyOrder[playerLevel].flatMap((difficulty) =>
     shuffle(categoryMovies.filter((movie) => movie.difficulty === difficulty)),
@@ -61,7 +68,7 @@ export const createQuiz = (mode: TestMode, category: Category, playerLevel: Play
   const fallback = difficultyOrder[playerLevel].flatMap((difficulty) =>
     shuffle(movies.filter((movie) => !categoryIds.has(movie.id) && movie.difficulty === difficulty)),
   )
-  return withLocalDistractors([...ordered, ...fallback].slice(0, mode), playerLevel)
+  return withLocalDistractors([...ordered, ...fallback].slice(0, mode), playerLevel, language)
 }
 
 const displayGenres = ['剧情', '科幻', '悬疑', '动画', '喜剧', '恐怖']

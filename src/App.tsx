@@ -8,15 +8,16 @@ import { createTmdbQuiz, hydrateTmdbMovieArtwork, readTmdbCredential } from './s
 import type { AnswerRecord, Category, PlayerLevel, QuizResult, QuizSession, TestMode } from './types'
 import { calculateResult, createQuiz } from './utils/quiz'
 import { recordMoviePerformance } from './utils/performance'
+import { useLanguage } from './i18n'
 
 const ACTIVE_KEY = 'cine-memory-active-v2'
 const HISTORY_KEY = 'cine-memory-history-v1'
 
 type Screen = 'home' | 'difficulty' | 'loading' | 'quiz' | 'result'
 
-const makeDevelopmentPreviewSession = (): QuizSession | null => {
+const makeDevelopmentPreviewSession = (language: 'zh' | 'en'): QuizSession | null => {
   if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('previewQuiz')) return null
-  const previewMovies = createQuiz(10, '综合', '略知一二')
+  const previewMovies = createQuiz(10, '综合', '略知一二', language)
   return {
     mode: 10,
     category: '综合',
@@ -40,7 +41,8 @@ const readStorage = <T,>(key: string, fallback: T): T => {
 }
 
 export default function App() {
-  const previewSession = useMemo(makeDevelopmentPreviewSession, [])
+  const { language } = useLanguage()
+  const previewSession = useMemo(() => makeDevelopmentPreviewSession(language), [])
   const [screen, setScreen] = useState<Screen>(() => previewSession ? 'quiz' : 'home')
   const [mode, setMode] = useState<TestMode>(10)
   const [category, setCategory] = useState<Category>('综合')
@@ -99,11 +101,11 @@ export default function App() {
     let quizMovies: QuizSession['movies']
     try {
       quizMovies = credential && !forceLocal
-        ? await createTmdbQuiz(chosenMode, chosenCategory, chosenPlayerLevel, credential)
-        : createQuiz(chosenMode, chosenCategory, chosenPlayerLevel)
+        ? await createTmdbQuiz(chosenMode, chosenCategory, chosenPlayerLevel, credential, language)
+        : createQuiz(chosenMode, chosenCategory, chosenPlayerLevel, language)
     } catch {
       // 在线片库超时或暂时不可用时立即启用内置题库，不再逐张等待图片检测。
-      quizMovies = createQuiz(chosenMode, chosenCategory, chosenPlayerLevel)
+      quizMovies = createQuiz(chosenMode, chosenCategory, chosenPlayerLevel, language)
     }
 
     const next: QuizSession = {

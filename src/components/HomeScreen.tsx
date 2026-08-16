@@ -4,6 +4,8 @@ import { createTmdbHomePosterPool, readTmdbCredential, type HomePosterItem } fro
 import type { QuizResult, TestMode } from '../types'
 import { homePosterCandidates, shuffleItems } from '../utils/posters'
 import { ResilientPosterImage } from './ResilientPosterImage'
+import { levelLabel, useLanguage } from '../i18n'
+import { LanguageSwitch } from './LanguageSwitch'
 
 interface Props {
   mode: TestMode
@@ -14,12 +16,6 @@ interface Props {
   onStartSetup: () => void
   onResume: () => void
 }
-
-const modes: { value: TestMode; label: string; note: string }[] = [
-  { value: 10, label: '快速', note: '10 部电影' },
-  { value: 20, label: '标准', note: '20 部电影' },
-  { value: 30, label: '深度', note: '30 部电影' },
-]
 
 const POSTER_CACHE_KEY = 'cine-home-posters-v1'
 const POSTER_CACHE_MAX_AGE = 12 * 60 * 60 * 1_000
@@ -59,6 +55,13 @@ export function HomeScreen({
   onStartSetup,
   onResume,
 }: Props) {
+  const { language } = useLanguage()
+  const en = language === 'en'
+  const modes: { value: TestMode; label: string; note: string }[] = [
+    { value: 10, label: en ? 'Quick' : '快速', note: en ? '10 films' : '10 部电影' },
+    { value: 20, label: en ? 'Standard' : '标准', note: en ? '20 films' : '20 部电影' },
+    { value: 30, label: en ? 'Deep Dive' : '深度', note: en ? '30 films' : '30 部电影' },
+  ]
   const [posterPool] = useState<HomePosterItem[]>(makeInitialPosterPool)
 
   useEffect(() => {
@@ -123,43 +126,48 @@ export function HomeScreen({
         ))}
       </div>
 
-      <nav className="cinematic-nav" aria-label="主导航">
-        <a className="cinematic-logo" href="#home" aria-label="光影鉴赏局首页">
-          光影鉴赏局<sup>®</sup>
+      <div className="home-mobile-language"><LanguageSwitch compact /></div>
+
+      <nav className="cinematic-nav" aria-label={en ? 'Main navigation' : '主导航'}>
+        <a className="cinematic-logo" href="#home" aria-label={en ? 'Cine Memory Bureau home' : '光影鉴赏局首页'}>
+          {en ? 'Cine Memory Bureau' : '光影鉴赏局'}<sup>®</sup>
         </a>
         <div className="cinematic-nav-links">
-          <a className="active" href="#home">首页</a>
-          <a href="#test-config">阅历测试</a>
-          {bestResult && <span>最近 {bestResult.score} 分 · {bestResult.playerLevel ?? '旧版测试'}</span>}
+          <a className="active" href="#home">{en ? 'Home' : '首页'}</a>
+          <a href="#test-config">{en ? 'Test' : '阅历测试'}</a>
+          {bestResult && <span>{en ? 'Latest' : '最近'} {bestResult.score} {en ? 'pts' : '分'} · {levelLabel(bestResult.playerLevel ?? '略知一二', language)}</span>}
         </div>
-        {hasActiveQuiz ? (
-          <button className="liquid-glass nav-journey-button" onClick={onResume}>继续测试</button>
-        ) : (
-          <a className="liquid-glass nav-journey-button" href="#test-config">选择场次</a>
-        )}
+        <div className="cinematic-nav-actions">
+          <LanguageSwitch compact />
+          {hasActiveQuiz ? (
+            <button className="liquid-glass nav-journey-button" onClick={onResume}>{en ? 'Resume' : '继续测试'}</button>
+          ) : (
+            <a className="liquid-glass nav-journey-button" href="#test-config">{en ? 'Choose Test' : '选择场次'}</a>
+          )}
+        </div>
       </nav>
 
       <section className="cinematic-hero" aria-labelledby="cinematic-title">
         <p className="cinematic-eyebrow animate-fade-rise">CINEMA MEMORY ASSESSMENT · 2026</p>
         <h1 id="cinematic-title" className="animate-fade-rise">
-          一帧光影，照见你的
-          <em>阅片阅历。</em>
+          {en ? <>One frame reveals<em>a lifetime<br />of cinema.</em></> : <>一帧光影，照见你的<em>阅片阅历。</em></>}
         </h1>
         <p className="cinematic-copy animate-fade-rise-delay">
-          从一张不透露片名的海报开始，凭记忆辨认电影，穿越类型、年代与地域，
-          最终获得只属于你的阅片段位。
+          {en
+            ? 'Begin with an image that hides its title. Recognize films from memory across genres, eras and regions, then discover your personal cinema rank.'
+            : '从一张不透露片名的海报开始，凭记忆辨认电影，穿越类型、年代与地域，最终获得只属于你的阅片段位。'}
         </p>
         <button className="liquid-glass cinematic-cta animate-fade-rise-delay-2" onClick={onStartSetup}>
-          <span>{hasActiveQuiz ? '重新开始测试' : '开始阅历测试'}</span>
+          <span>{hasActiveQuiz ? (en ? 'Start a New Test' : '重新开始测试') : (en ? 'Begin the Test' : '开始阅历测试')}</span>
           <span aria-hidden="true">→</span>
         </button>
-        <p className="cinematic-motto animate-fade-rise-delay-2">看过不算，记得才算。</p>
+        <p className="cinematic-motto animate-fade-rise-delay-2">{en ? 'Seeing is easy. Remembering is the test.' : '看过不算，记得才算。'}</p>
       </section>
 
-      <section className="liquid-glass cinematic-config" id="test-config" aria-label="测试设置">
-        <div className="config-heading"><span>TEST / 01</span><strong>选择测试场次</strong></div>
+      <section className="liquid-glass cinematic-config" id="test-config" aria-label={en ? 'Test settings' : '测试设置'}>
+        <div className="config-heading"><span>TEST / 01</span><strong>{en ? 'Choose a Session' : '选择测试场次'}</strong></div>
 
-        <div className="cinematic-modes" aria-label="测试长度">
+        <div className="cinematic-modes" aria-label={en ? 'Test length' : '测试长度'}>
           {modes.map((item) => (
             <button
               key={item.value}
@@ -174,16 +182,16 @@ export function HomeScreen({
 
         <div className="config-flow-hint">
           <span>NEXT / 02</span>
-          <strong>选择身份与类型</strong>
-          <small>难度将改变片单与干扰项</small>
+          <strong>{en ? 'Identity & Genre' : '选择身份与类型'}</strong>
+          <small>{en ? 'Difficulty changes films and distractors' : '难度将改变片单与干扰项'}</small>
         </div>
 
-        <button className="config-start-button" onClick={onStartSetup}>选择身份 <span aria-hidden="true">→</span></button>
+        <button className="config-start-button" onClick={onStartSetup}>{en ? 'Choose Identity' : '选择身份'} <span aria-hidden="true">→</span></button>
       </section>
 
       <footer className="cinematic-footer">
-        <span>TMDB 实时片库 · 无需登录</span>
-        <span>{historyCount ? `已完成 ${historyCount} 场测试` : '你的银幕档案尚未开启'}</span>
+        <span>{en ? 'TMDB live database · No sign-in' : 'TMDB 实时片库 · 无需登录'}</span>
+        <span>{historyCount ? (en ? `${historyCount} tests completed` : `已完成 ${historyCount} 场测试`) : (en ? 'Your cinema archive awaits' : '你的银幕档案尚未开启')}</span>
       </footer>
     </main>
   )
