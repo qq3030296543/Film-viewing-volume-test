@@ -188,8 +188,8 @@ async function bilingualDiscoverRequest(
     return [{
       ...base,
       localized_titles: {
-        zh: zhMovie?.title ?? base.title,
-        en: enMovie?.title ?? base.original_title ?? base.title,
+        zh: firstNonBlank(zhMovie?.title, base.title, base.original_title, enMovie?.title),
+        en: firstNonBlank(enMovie?.title, base.original_title, base.title, zhMovie?.title),
       },
       localized_overviews: {
         zh: zhMovie?.overview,
@@ -208,6 +208,9 @@ const shuffle = <T,>(items: readonly T[]) => {
   }
   return output
 }
+
+const firstNonBlank = (...values: Array<string | null | undefined>) =>
+  values.find((value) => value?.trim())?.trim() ?? ''
 
 function allocateTargets<Key extends string>(
   total: number,
@@ -525,10 +528,9 @@ function selectDistractors(item: TmdbListMovie, all: TmdbListMovie[], playerLeve
     .slice(0, 3)
 }
 
-const localizedMovieTitle = (movie: TmdbListMovie, language: Language) =>
-  movie.localized_titles?.[language]
-    ?? (language === 'en' ? movie.original_title : movie.title)
-    ?? movie.title
+const localizedMovieTitle = (movie: TmdbListMovie, language: Language) => language === 'en'
+  ? firstNonBlank(movie.localized_titles?.en, movie.original_title, movie.title, movie.localized_titles?.zh)
+  : firstNonBlank(movie.localized_titles?.zh, movie.title, movie.original_title, movie.localized_titles?.en)
 
 const localizedMovieOverview = (movie: TmdbListMovie, language: Language) =>
   movie.localized_overviews?.[language]?.trim()

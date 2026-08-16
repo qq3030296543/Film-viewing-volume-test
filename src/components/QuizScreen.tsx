@@ -23,15 +23,25 @@ interface QuizOption {
   label: string
 }
 
+const firstNonBlank = (...values: Array<string | null | undefined>) =>
+  values.find((value) => value?.trim())?.trim() ?? ''
+
+const clarifyMinimalTitle = (title: string, alternateTitle: string, en: boolean) => {
+  if (en || !/^[一丨｜—–\-·・\s]{1,4}$/.test(title)) return title
+  const alternate = alternateTitle.trim()
+  return alternate && alternate !== title ? `${title}（${alternate}）` : title
+}
+
 export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
   const { language } = useLanguage()
   const en = language === 'en'
   const movie = session.movies[session.currentIndex]
   const [selectedKey, setSelectedKey] = useState<QuizOptionKey | null>(null)
-  const answerTitle = movie.localizedTitles?.[language]
-    ?? (en ? movie.originalTitle : movie.title)
-    ?? movie.title
+  const answerTitle = en
+    ? firstNonBlank(movie.localizedTitles?.en, movie.originalTitle, movie.title, movie.localizedTitles?.zh)
+    : firstNonBlank(movie.localizedTitles?.zh, movie.title, movie.originalTitle, movie.localizedTitles?.en)
   const localizedDistractors = movie.localizedDistractors?.[language] ?? movie.recognitionDistractors
+  const alternateDistractors = movie.localizedDistractors?.[en ? 'zh' : 'en'] ?? []
   const synopsis = movie.localizedSynopses?.[language] ?? movie.synopsis
   const optionOrder = useMemo(
     () => shuffledOptions<QuizOptionKey>(['answer', 'distractor-0', 'distractor-1', 'distractor-2']),
@@ -39,16 +49,30 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
   )
   const options = useMemo<QuizOption[]>(
     () => optionOrder.map((key) => {
-      if (key === 'answer') return { key, label: answerTitle }
+      if (key === 'answer') {
+        return {
+          key,
+          label: clarifyMinimalTitle(
+            answerTitle,
+            firstNonBlank(movie.localizedTitles?.en, movie.originalTitle),
+            en,
+          ),
+        }
+      }
       const distractorIndex = Number(key.replace('distractor-', ''))
+      const alternateTitle = firstNonBlank(alternateDistractors[distractorIndex])
+      const title = firstNonBlank(
+        localizedDistractors[distractorIndex],
+        alternateTitle,
+        movie.recognitionDistractors[distractorIndex],
+        en ? `Film option ${distractorIndex + 1}` : `电影选项 ${distractorIndex + 1}`,
+      )
       return {
         key,
-        label: localizedDistractors[distractorIndex]
-          ?? movie.recognitionDistractors[distractorIndex]
-          ?? '',
+        label: clarifyMinimalTitle(title, alternateTitle, en),
       }
     }),
-    [answerTitle, localizedDistractors, movie.recognitionDistractors, optionOrder],
+    [alternateDistractors, answerTitle, en, localizedDistractors, movie.localizedTitles, movie.originalTitle, movie.recognitionDistractors, optionOrder],
   )
   const ambientMovies = useMemo(
     () => session.movies.filter((item) => item.id !== movie.id).slice(0, 6),
