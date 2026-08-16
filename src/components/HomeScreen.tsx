@@ -130,7 +130,7 @@ export function HomeScreen({
         <div className="cinematic-nav-links">
           <a className="active" href="#home">首页</a>
           <a href="#test-config">阅历测试</a>
-          {bestResult && <span>最高 {bestResult.score} 分 · {bestResult.playerLevel ?? '旧版测试'}</span>}
+          {bestResult && <span>最近 {bestResult.score} 分 · {bestResult.playerLevel ?? '旧版测试'}</span>}
         </div>
         {hasActiveQuiz ? (
           <button className="liquid-glass nav-journey-button" onClick={onResume}>继续测试</button>

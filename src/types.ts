@@ -49,11 +49,31 @@ export interface Movie {
 
 export interface AnswerRecord {
   movieId: string
+  selectedAnswer?: string
   recognized: boolean
   verified: boolean
   skippedVerification: boolean
   genre: string
   points: number
+}
+
+export interface PerformanceSlice {
+  attempts: number
+  correct: number
+}
+
+export interface MoviePerformanceStats extends PerformanceSlice {
+  movieId: string
+  tmdbId?: number
+  title: string
+  byLevel: Record<PlayerLevel, PerformanceSlice>
+  wrongAnswers: Record<string, number>
+  lastAnsweredAt: number
+}
+
+export interface LevelPerformanceSummary extends PerformanceSlice {
+  accuracy: number
+  movieCount: number
 }
 
 export interface QuizSession {

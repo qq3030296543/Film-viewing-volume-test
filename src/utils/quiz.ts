@@ -105,8 +105,10 @@ export const primaryGenre = (movie: Movie) => displayGenres.find((genre) => movi
 export const makeAnswer = (
   movie: Movie,
   recognized: boolean,
+  selectedAnswer: string,
 ): AnswerRecord => ({
   movieId: movie.id,
+  selectedAnswer,
   recognized,
   verified: recognized,
   skippedVerification: false,

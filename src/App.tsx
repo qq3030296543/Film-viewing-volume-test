@@ -7,6 +7,7 @@ import { ResultScreen } from './components/ResultScreen'
 import { createTmdbQuiz, hydrateTmdbMovieArtwork, readTmdbCredential } from './services/tmdb'
 import type { AnswerRecord, Category, PlayerLevel, QuizResult, QuizSession, TestMode } from './types'
 import { calculateResult, createQuiz } from './utils/quiz'
+import { recordMoviePerformance } from './utils/performance'
 
 const ACTIVE_KEY = 'cine-memory-active-v2'
 const HISTORY_KEY = 'cine-memory-history-v1'
@@ -48,7 +49,8 @@ export default function App() {
   const [history, setHistory] = useState<QuizResult[]>(() => readStorage<QuizResult[]>(HISTORY_KEY, []))
   const [result, setResult] = useState<QuizResult | null>(null)
   const credential = useMemo(() => readTmdbCredential(), [])
-  const bestResult = useMemo(() => [...history].sort((a, b) => b.score - a.score)[0], [history])
+  // 不跨身份比较原始分数；首页展示最近一次完整记录。
+  const bestResult = history[0]
 
   useEffect(() => {
     if (session) localStorage.setItem(ACTIVE_KEY, JSON.stringify(session))
@@ -122,6 +124,8 @@ export default function App() {
 
   const recordAnswer = (answer: AnswerRecord) => {
     if (!session) return
+    const answeredMovie = session.movies[session.currentIndex]
+    if (answeredMovie) recordMoviePerformance(answeredMovie, answer, session.playerLevel ?? '略知一二')
     const streak = answer.recognized ? session.currentStreak + 1 : 0
     const updated: QuizSession = {
       ...session,

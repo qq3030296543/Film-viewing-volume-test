@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { movies } from '../data/movies'
-import { getRank } from '../data/ranks'
+import { getIdentityAssessment, getRank } from '../data/ranks'
 import type { QuizResult } from '../types'
+import { getLevelPerformanceSummary } from '../utils/performance'
 import { RadarChart } from './RadarChart'
 import { TmdbAttribution } from './TmdbAttribution'
 
@@ -12,20 +13,20 @@ interface Props {
 }
 
 export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
-  const rank = getRank(result.score)
+  const playerLevel = result.playerLevel ?? '略知一二'
+  const rank = getRank(result.score, playerLevel)
+  const assessment = getIdentityAssessment(result.score, playerLevel)
+  const levelSummary = useMemo(() => getLevelPerformanceSummary(playerLevel), [playerLevel, result.completedAt])
   const [shareOpen, setShareOpen] = useState(false)
   const [toast, setToast] = useState('')
   const shareCardRef = useRef<HTMLDivElement>(null)
-  const playerLevel = result.playerLevel ?? '略知一二'
-  const percentileFactor = playerLevel === '阅片无数' ? .89 : playerLevel === '略知一二' ? .76 : .63
-  const percentile = Math.min(99, 12 + Math.round(result.score * percentileFactor))
   const strongest = [...result.categoryScores].sort((a, b) => b.score - a.score).find((item) => item.total > 0)
   const recommendations = useMemo(() => {
     const preferred = strongest?.label
     return movies.filter((movie) => !preferred || movie.genres.includes(preferred)).slice(0, 4)
   }, [strongest?.label])
 
-  const shareText = `我以「${playerLevel}」身份完成光影鉴赏局，获得 ${result.score} 分，段位：${rank.name}，超越了 ${percentile}% 的玩家。你也来试试？`
+  const shareText = `我以「${playerLevel}」身份完成光影鉴赏局，获得 ${result.score} 分，身份段位：${rank.name}（${assessment.label}）。你也来试试？`
 
   const share = async () => {
     const shareApi = (navigator as unknown as { share?: (data: ShareData) => Promise<void> }).share
@@ -74,7 +75,7 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
     ctx.fillText(`猜中 ${result.recognizedCount} 部  ·  答错 ${result.fuzzyCount} 部  ·  最长连胜 ${result.bestStreak}`, 110, 1050)
     ctx.fillStyle = '#9d998f'
     ctx.font = '30px sans-serif'
-    ctx.fillText(`${playerLevel}  ·  擅长：${strongest?.label ?? '综合'}  ·  超越 ${percentile}% 玩家`, 110, 1120)
+    ctx.fillText(`${playerLevel}  ·  擅长：${strongest?.label ?? '综合'}  ·  ${assessment.label}`, 110, 1120)
     ctx.strokeStyle = rank.color
     ctx.beginPath(); ctx.moveTo(110, 1200); ctx.lineTo(970, 1200); ctx.stroke()
     ctx.fillStyle = '#f4efe6'
@@ -97,7 +98,11 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
           <span className="section-index">测试完成 · YOUR CINEMA RANK</span>
           <div className="rank-name-line"><span className="rank-icon">{rank.icon}</span><div><small>{rank.eyebrow}</small><h1>{rank.name}</h1></div></div>
           <p>{rank.description}</p>
-          <div className="percentile">挑战身份：<b>{playerLevel}</b> · 你的电影记忆超过了 <strong>{percentile}%</strong> 的玩家</div>
+          <div className="identity-assessment">
+            <span>挑战身份：<b>{playerLevel}</b></span>
+            <strong>{assessment.label}</strong>
+            <small>{assessment.nextStep}</small>
+          </div>
         </div>
         <div className="score-dial"><span>{result.score}</span><small>/ 100</small><i style={{ '--score': `${result.score * 3.6}deg` } as React.CSSProperties} /></div>
       </section>
@@ -110,6 +115,11 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
             <div><span>答错影片</span><strong>{result.fuzzyCount}<small> 部</small></strong></div>
             <div><span>识别正确率</span><strong>{result.accuracy}<small> %</small></strong></div>
             <div><span>最长连胜</span><strong>{result.bestStreak}<small> 次</small></strong></div>
+          </div>
+          <div className="calibration-note">
+            <span>LOCAL CALIBRATION · 本机真实记录</span>
+            <p>当前浏览器已在「{playerLevel}」下记录 {levelSummary.attempts} 次作答，覆盖 {levelSummary.movieCount} 部电影。此数据只用于个人题目校准，不代表全站玩家排名。</p>
+            <strong>{levelSummary.accuracy}<small>% 历史正确率</small></strong>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import type { Rank } from '../types'
+import type { PlayerLevel, Rank } from '../types'
 
 export const ranks: Rank[] = [
   { min: 0, max: 15, name: '银幕路人', icon: '◌', eyebrow: '片头刚刚亮起', description: '你与电影的故事才刚开场，下一部也许就是你的本命。', color: '#a4aab4' },
@@ -11,4 +11,40 @@ export const ranks: Rank[] = [
   { min: 97, max: 100, name: '银幕宗师', icon: '✷', eyebrow: '光影尽在掌握', description: '片名、人物与主题皆可信手拈来，你就是行走的电影史。', color: '#ffe09a' },
 ]
 
-export const getRank = (score: number) => ranks.find((rank) => score >= rank.min && score <= rank.max) ?? ranks[0]
+const rankLowerBounds: Record<PlayerLevel, number[]> = {
+  入门菜鸟: [0, 20, 38, 55, 70, 82, 91, 97],
+  略知一二: [0, 16, 31, 46, 61, 76, 89, 97],
+  阅片无数: [0, 10, 22, 36, 50, 64, 78, 90],
+}
+
+export const getRank = (score: number, playerLevel: PlayerLevel = '略知一二') => {
+  const thresholds = rankLowerBounds[playerLevel]
+  const index = thresholds.reduce((matched, minimum, current) => score >= minimum ? current : matched, 0)
+  return {
+    ...ranks[index],
+    min: thresholds[index],
+    max: thresholds[index + 1] ? thresholds[index + 1] - 1 : 100,
+  }
+}
+
+export const getIdentityAssessment = (score: number, playerLevel: PlayerLevel) => {
+  const label = score >= 90
+    ? '身份内表现卓越'
+    : score >= 75
+      ? '身份内表现突出'
+      : score >= 60
+        ? '身份内表现稳定'
+        : score >= 40
+          ? '身份内正在进阶'
+          : '身份内仍需热身'
+
+  const nextStep = playerLevel === '入门菜鸟' && score >= 82
+    ? '建议下次选择「略知一二」'
+    : playerLevel === '略知一二' && score >= 78
+      ? '建议下次挑战「阅片无数」'
+      : playerLevel === '阅片无数' && score >= 75
+        ? '你已在最高身份中取得有说服力的成绩'
+        : `继续挑战「${playerLevel}」，让成绩更加稳定`
+
+  return { label, nextStep }
+}

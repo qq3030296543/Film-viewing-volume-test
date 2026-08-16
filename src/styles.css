@@ -544,11 +544,12 @@ body::before {
 .rank-hero::before { content: ""; position: absolute; width: 540px; height: 540px; right: -40px; border: 1px solid color-mix(in srgb, var(--rank-color) 18%, transparent); border-radius: 50%; box-shadow: 0 0 0 70px rgba(255,255,255,.008), 0 0 0 140px rgba(255,255,255,.006); }
 .rank-copy { position: relative; z-index: 1; max-width: 690px; }
 .rank-name-line { display: flex; align-items: center; gap: 27px; margin-top: 23px; }.rank-icon { color: var(--rank-color); font-size: 76px; line-height: 1; text-shadow: 0 0 28px color-mix(in srgb, var(--rank-color) 30%, transparent); }.rank-name-line small { color: #7e7b74; font-size: 12px; letter-spacing: .12em; }.rank-name-line h1 { margin: 5px 0 0; font: 500 clamp(53px, 6vw, 88px)/1 Georgia, "Songti SC", serif; letter-spacing: -.05em; }
-.rank-copy > p { color: #9e9a91; max-width: 580px; font: 17px/1.8 Georgia, "Songti SC", serif; }.percentile { display: inline-block; margin-top: 15px; padding: 11px 15px; border: 1px solid #353433; color: #77746f; font-size: 11px; }.percentile strong { color: var(--rank-color); font-size: 15px; }
+.rank-copy > p { color: #9e9a91; max-width: 580px; font: 17px/1.8 Georgia, "Songti SC", serif; }.identity-assessment { display: inline-grid; grid-template-columns: auto auto; gap: 5px 13px; margin-top: 15px; padding: 11px 15px; border: 1px solid #353433; color: #77746f; font-size: 11px; }.identity-assessment strong { color: var(--rank-color); font-size: 15px; }.identity-assessment small { grid-column: 1 / -1; color: #8f8b83; font-size: 10px; }
 .score-dial { width: 280px; height: 280px; position: relative; display: grid; place-content: center; text-align: center; z-index: 1; flex: none; }.score-dial::before { content: ""; position: absolute; inset: 0; border: 1px solid #3a3834; border-radius: 50%; }.score-dial span { font: 500 110px/1 Georgia, serif; letter-spacing: -.07em; }.score-dial small { color: var(--rank-color); font: 12px ui-monospace, monospace; letter-spacing: .15em; }.score-dial i { --score: 180deg; position: absolute; inset: -4px; border-radius: 50%; background: conic-gradient(var(--rank-color) var(--score), transparent 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0); transform: rotate(-90deg); }
 .result-grid { width: min(1260px, calc(100% - 48px)); margin: 32px auto; display: grid; grid-template-columns: .85fr 1.15fr; gap: 16px; }
 .result-card { background: #121418; border: 1px solid #292a2e; padding: 33px; }.metrics-card { grid-column: 1 / -1; }.card-heading { display: flex; align-items: flex-end; justify-content: space-between; padding-bottom: 22px; border-bottom: 1px solid #292a2e; }.card-heading h2 { font-size: 25px; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 28px; }.metric-grid > div { display: flex; flex-direction: column; gap: 10px; padding-left: 24px; border-left: 1px solid #333438; }.metric-grid span { color: #77756f; font-size: 11px; letter-spacing: .08em; }.metric-grid strong { font: 500 44px Georgia, serif; }.metric-grid small { color: #6f6d67; font: 11px sans-serif; }
+.calibration-note { margin-top: 28px; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px 28px; border: 1px solid #2d3035; background: rgba(255,255,255,.018); }.calibration-note > span { color: #7f858b; font: 9px ui-monospace, monospace; letter-spacing: .12em; }.calibration-note p { margin: 0; color: #777b80; font-size: 11px; line-height: 1.65; }.calibration-note > strong { grid-column: 2; grid-row: 1 / 3; color: var(--rank-color); font: 500 34px Georgia, serif; white-space: nowrap; }.calibration-note > strong small { margin-left: 6px; color: #777b80; font: 9px sans-serif; }
 .radar-layout { display: grid; grid-template-columns: minmax(230px, 1fr) 1fr; align-items: center; gap: 18px; padding-top: 20px; }.radar-chart { width: 100%; max-width: 300px; overflow: visible; }.radar-grid { fill: none; stroke: #333438; stroke-width: 1; }.radar-axis { stroke: #292a2e; }.radar-data { fill: rgba(220, 162, 79, .2); stroke: #dda352; stroke-width: 2; }.radar-chart text { fill: #77756f; font-size: 10px; }
 .genre-rankings { display: flex; flex-direction: column; gap: 15px; }.genre-rankings > div { display: grid; grid-template-columns: 38px 1fr 25px; align-items: center; gap: 10px; color: #8f8c84; font-size: 10px; }.genre-rankings > div > div { height: 2px; background: #292a2d; }.genre-rankings i { display: block; height: 100%; background: #c68f49; }.genre-rankings strong { color: #d4d0c8; font: 10px ui-monospace, monospace; }
 .recommendation-list > div { display: grid; grid-template-columns: 28px minmax(130px, .75fr) 1fr; gap: 14px; padding: 19px 0; border-bottom: 1px solid #292a2e; align-items: center; }.recommendation-list > div > span { color: var(--gold); font: 10px ui-monospace, monospace; }.recommendation-list div div { display: flex; flex-direction: column; gap: 5px; }.recommendation-list strong { font: 500 16px Georgia, "Songti SC", serif; }.recommendation-list small, .recommendation-list p { color: #6f6d67; font-size: 10px; margin: 0; line-height: 1.5; }
@@ -721,6 +722,13 @@ body::before {
 @media (max-width: 720px) {
   .single-stage-quiz .poster-showcase { width: min(100%, 390px); height: auto; min-height: 0; aspect-ratio: 2/3 !important; }
   .single-stage-quiz .poster-showcase.local-visual .title-guard-bottom { height: 28%; }
+}
+
+@media (max-width: 720px) {
+  .result-shell .identity-assessment { width: 100%; grid-template-columns: 1fr; border-radius: 16px; }
+  .result-shell .identity-assessment small { grid-column: auto; }
+  .calibration-note { grid-template-columns: 1fr; gap: 8px; }
+  .calibration-note > strong { grid-column: auto; grid-row: auto; margin-top: 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1370,7 +1378,7 @@ body::before {
 .result-shell .recommendation-list strong { font-family: var(--font-display); font-weight: 400; }
 .result-shell .rank-name-line h1 { color: #fff; }
 .result-shell .rank-copy > p { color: #aeb5bb; }
-.result-shell .percentile {
+.result-shell .identity-assessment {
   border-color: rgba(255,255,255,.14);
   border-radius: 999px;
   color: rgba(255,255,255,.52);

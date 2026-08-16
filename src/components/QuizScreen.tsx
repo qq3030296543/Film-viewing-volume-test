@@ -29,7 +29,7 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
     if (!answered) setSelected(option)
   }
 
-  const finish = () => onAnswer(makeAnswer(movie, correct))
+  const finish = () => selected && onAnswer(makeAnswer(movie, correct, selected))
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
