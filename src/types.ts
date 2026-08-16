@@ -31,6 +31,9 @@ export interface Movie {
   imageAlt: string
   accent: [string, string]
   recognitionDistractors: string[]
+  localizedTitles?: Partial<Record<Language, string>>
+  localizedDistractors?: Partial<Record<Language, string[]>>
+  localizedSynopses?: Partial<Record<Language, string>>
   synopsis: string
   question: string
   options: string[]

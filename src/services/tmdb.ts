@@ -77,6 +77,8 @@ interface TmdbListMovie {
   vote_average?: number
   vote_count?: number
   popularity?: number
+  localized_titles?: Partial<Record<Language, string>>
+  localized_overviews?: Partial<Record<Language, string>>
 }
 
 interface DiscoverResponse {
@@ -152,6 +154,50 @@ async function tmdbRequest<T>(
   } finally {
     window.clearTimeout(timeout)
   }
+}
+
+async function bilingualDiscoverRequest(
+  credential: string,
+  params: Record<string, string | number | boolean>,
+  primaryLanguage: Language,
+): Promise<DiscoverResponse> {
+  const languageParams = (language: Language) => ({ ...params, language: tmdbLocale(language) })
+  const [zhResult, enResult] = await Promise.allSettled([
+    tmdbRequest<DiscoverResponse>('/discover/movie', credential, languageParams('zh')),
+    tmdbRequest<DiscoverResponse>('/discover/movie', credential, languageParams('en')),
+  ])
+  const zhResponse = zhResult.status === 'fulfilled' ? zhResult.value : undefined
+  const enResponse = enResult.status === 'fulfilled' ? enResult.value : undefined
+  const primaryResponse = primaryLanguage === 'zh'
+    ? (zhResponse ?? enResponse)
+    : (enResponse ?? zhResponse)
+  if (!primaryResponse) throw new Error('TMDB bilingual discovery request failed')
+
+  const zhMovies = new Map((zhResponse?.results ?? []).map((movie) => [movie.id, movie]))
+  const enMovies = new Map((enResponse?.results ?? []).map((movie) => [movie.id, movie]))
+  const allIds = new Set([
+    ...(primaryResponse.results ?? []).map((movie) => movie.id),
+    ...zhMovies.keys(),
+    ...enMovies.keys(),
+  ])
+  const results = [...allIds].flatMap((id) => {
+    const zhMovie = zhMovies.get(id)
+    const enMovie = enMovies.get(id)
+    const base = primaryLanguage === 'zh' ? (zhMovie ?? enMovie) : (enMovie ?? zhMovie)
+    if (!base) return []
+    return [{
+      ...base,
+      localized_titles: {
+        zh: zhMovie?.title ?? base.title,
+        en: enMovie?.title ?? base.original_title ?? base.title,
+      },
+      localized_overviews: {
+        zh: zhMovie?.overview,
+        en: enMovie?.overview,
+      },
+    }]
+  })
+  return { ...primaryResponse, results }
 }
 
 const shuffle = <T,>(items: readonly T[]) => {
@@ -477,8 +523,15 @@ function selectDistractors(item: TmdbListMovie, all: TmdbListMovie[], playerLeve
   return uniqueCandidates
     .sort((left, right) => distractorScore(item, right, playerLevel) - distractorScore(item, left, playerLevel))
     .slice(0, 3)
-    .map((movie) => movie.title)
 }
+
+const localizedMovieTitle = (movie: TmdbListMovie, language: Language) =>
+  movie.localized_titles?.[language]
+    ?? (language === 'en' ? movie.original_title : movie.title)
+    ?? movie.title
+
+const localizedMovieOverview = (movie: TmdbListMovie, language: Language) =>
+  movie.localized_overviews?.[language]?.trim()
 
 function makeQuizMovie(
   item: TmdbListMovie,
@@ -490,8 +543,20 @@ function makeQuizMovie(
   const primaryPath = item.backdrop_path ?? item.poster_path
   if (!primaryPath || !item.title) return null
 
-  const distractors = selectDistractors(item, all, playerLevel)
-  if (distractors.length < 3) return null
+  const distractorMovies = selectDistractors(item, all, playerLevel)
+  if (distractorMovies.length < 3) return null
+  const localizedTitles = {
+    zh: localizedMovieTitle(item, 'zh'),
+    en: localizedMovieTitle(item, 'en'),
+  }
+  const localizedDistractors = {
+    zh: distractorMovies.map((movie) => localizedMovieTitle(movie, 'zh')),
+    en: distractorMovies.map((movie) => localizedMovieTitle(movie, 'en')),
+  }
+  const localizedSynopses = {
+    zh: localizedMovieOverview(item, 'zh') || '这部电影的中文简介尚未补全，详细资料以 TMDB 最新记录为准。',
+    en: localizedMovieOverview(item, 'en') || 'An English synopsis is not available yet. See the latest TMDB record for full details.',
+  }
 
   // 识别题优先使用横版剧照。TMDB 的主海报经常自带片名，剧照更适合无提示识别。
   const backdropUrls = item.backdrop_path
@@ -508,7 +573,7 @@ function makeQuizMovie(
 
   return {
     id: `tmdb-${item.id}`,
-    title: item.title,
+    title: localizedTitles[language],
     originalTitle: item.original_title || item.title,
     year,
     region: regionFromLanguage(item.original_language),
@@ -518,13 +583,14 @@ function makeQuizMovie(
     imageUrls: [...new Set(artworkUrls)],
     imageAlt: language === 'zh' ? 'TMDB 实时电影画面' : 'Live movie artwork from TMDB',
     accent: index % 3 === 0 ? ['#263c4a', '#c48a54'] : index % 3 === 1 ? ['#552c32', '#d3aa66'] : ['#2f4639', '#b8a56d'],
-    recognitionDistractors: distractors,
-    synopsis: item.overview?.trim() || (language === 'zh'
-      ? '这部电影的中文简介尚未补全，详细资料以 TMDB 最新记录为准。'
-      : 'An English synopsis is not available yet. See the latest TMDB record for full details.'),
+    recognitionDistractors: localizedDistractors[language],
+    localizedTitles,
+    localizedDistractors,
+    localizedSynopses,
+    synopsis: localizedSynopses[language],
     question: '',
     options: [],
-    answer: item.title,
+    answer: localizedTitles[language],
     explanation: language === 'zh' ? '资料于测试开始时从 TMDB 实时同步。' : 'Data synced live from TMDB when the test began.',
     spoiler: false,
     difficulty: difficultyFromVotes(votes),
@@ -603,7 +669,7 @@ async function discoverQuizMovies(
   language: Language,
 ) {
   const pageCount = mode === 10 ? 3 : mode === 20 ? 4 : 5
-  const cacheKey = `balanced-v3:${language}:${category}:${playerLevel}:${pageCount}`
+  const cacheKey = `balanced-v4-bilingual:${language}:${category}:${playerLevel}:${pageCount}`
   const cached = discoveryCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return cached.movies
 
@@ -611,30 +677,29 @@ async function discoverQuizMovies(
   const requests: Promise<DiscoverResponse>[] = []
   if (category === '日韩电影') {
     requests.push(
-      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ja', language)),
-      tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, 'ko', language)),
+      bilingualDiscoverRequest(credential, discoverParams(category, 1, playerLevel, 'ja', language), language),
+      bilingualDiscoverRequest(credential, discoverParams(category, 1, playerLevel, 'ko', language), language),
     )
     const remainingCount = Math.max(0, pageCount - 2)
     const extraPages = randomPages(profile.maxPage, remainingCount)
-    requests.push(...extraPages.map((page, index) => tmdbRequest<DiscoverResponse>(
-      '/discover/movie',
+    requests.push(...extraPages.map((page, index) => bilingualDiscoverRequest(
       credential,
       discoverParams(category, page, playerLevel, index % 2 === 0 ? 'ja' : 'ko', language),
+      language,
     )))
   } else {
-    requests.push(tmdbRequest<DiscoverResponse>('/discover/movie', credential, discoverParams(category, 1, playerLevel, undefined, language)))
+    requests.push(bilingualDiscoverRequest(credential, discoverParams(category, 1, playerLevel, undefined, language), language))
     const extraPages = randomPages(profile.maxPage, pageCount - 1)
-    requests.push(...extraPages.map((page) => tmdbRequest<DiscoverResponse>(
-      '/discover/movie',
+    requests.push(...extraPages.map((page) => bilingualDiscoverRequest(
       credential,
       discoverParams(category, page, playerLevel, undefined, language),
+      language,
     )))
   }
 
   const relevantEraWeights = category === '文艺经典' ? classicEraWeights : eraWeights[playerLevel]
   const relevantEras = eraWindows.filter((era) => relevantEraWeights[era.key] > 0)
-  requests.push(...relevantEras.map((era, index) => tmdbRequest<DiscoverResponse>(
-    '/discover/movie',
+  requests.push(...relevantEras.map((era, index) => bilingualDiscoverRequest(
     credential,
     eraDiscoverParams(
       category,
@@ -643,13 +708,14 @@ async function discoverQuizMovies(
       category === '日韩电影' ? (index % 2 === 0 ? 'ja' : 'ko') : undefined,
       language,
     ),
+    language,
   )))
 
   if (category === '综合') {
-    requests.push(...(['zh', 'ja', 'ko'] as const).map((originalLanguage) => tmdbRequest<DiscoverResponse>(
-      '/discover/movie',
+    requests.push(...(['zh', 'ja', 'ko'] as const).map((originalLanguage) => bilingualDiscoverRequest(
       credential,
       regionalDiscoverParams(originalLanguage, playerLevel, language),
+      language,
     )))
   }
 

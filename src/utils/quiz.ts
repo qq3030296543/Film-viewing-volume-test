@@ -12,7 +12,7 @@ const shuffle = <T,>(items: T[]): T[] => {
   return result
 }
 
-export const shuffledOptions = (items: string[]) => shuffle(items)
+export const shuffledOptions = <T,>(items: T[]) => shuffle(items)
 
 export const matchesCategory = (movie: Movie, category: Category) => {
   if (category === '综合') return true
@@ -48,14 +48,20 @@ const localDistractorScore = (target: Movie, candidate: Movie, level: PlayerLeve
 const withLocalDistractors = (selected: Movie[], level: PlayerLevel, language: Language) => selected.map((movie) => {
   const candidates = shuffle(movies.filter((candidate) => candidate.id !== movie.id && candidate.title !== movie.title))
     .sort((left, right) => localDistractorScore(movie, right, level) - localDistractorScore(movie, left, level))
-    .map((candidate) => language === 'en' ? candidate.originalTitle : candidate.title)
+    .slice(0, 3)
+  const localizedDistractors = {
+    zh: candidates.map((candidate) => candidate.title),
+    en: candidates.map((candidate) => candidate.originalTitle),
+  }
+  const englishSynopsis = 'This title comes from the built-in offline collection. Open its TMDB page after answering for full details.'
   return {
     ...movie,
     title: language === 'en' ? movie.originalTitle : movie.title,
-    recognitionDistractors: [...new Set(candidates)].slice(0, 3),
-    synopsis: language === 'en'
-      ? 'This title comes from the built-in offline collection. Open its TMDB page after answering for full details.'
-      : movie.synopsis,
+    recognitionDistractors: localizedDistractors[language],
+    localizedTitles: { zh: movie.title, en: movie.originalTitle },
+    localizedDistractors,
+    localizedSynopses: { zh: movie.synopsis, en: englishSynopsis },
+    synopsis: language === 'en' ? englishSynopsis : movie.synopsis,
   }
 })
 

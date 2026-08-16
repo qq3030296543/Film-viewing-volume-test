@@ -150,7 +150,9 @@ export function HomeScreen({
       <section className="cinematic-hero" aria-labelledby="cinematic-title">
         <p className="cinematic-eyebrow animate-fade-rise">CINEMA MEMORY ASSESSMENT · 2026</p>
         <h1 id="cinematic-title" className="animate-fade-rise">
-          {en ? <>One frame reveals<em>a lifetime<br />of cinema.</em></> : <>一帧光影，照见你的<em>阅片阅历。</em></>}
+          {en
+            ? <><span>One frame reveals</span><em>a lifetime<br />of cinema.</em></>
+            : <><span>一帧光影，照见你的</span><em>阅片阅历。</em></>}
         </h1>
         <p className="cinematic-copy animate-fade-rise-delay">
           {en

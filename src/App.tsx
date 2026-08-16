@@ -10,7 +10,7 @@ import { calculateResult, createQuiz } from './utils/quiz'
 import { recordMoviePerformance } from './utils/performance'
 import { useLanguage } from './i18n'
 
-const ACTIVE_KEY = 'cine-memory-active-v2'
+const ACTIVE_KEY = 'cine-memory-active-v3'
 const HISTORY_KEY = 'cine-memory-history-v1'
 
 type Screen = 'home' | 'difficulty' | 'loading' | 'quiz' | 'result'

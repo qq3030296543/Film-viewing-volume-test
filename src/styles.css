@@ -228,6 +228,16 @@
   font-style: italic;
   font-weight: 400;
 }
+.cinematic-hero h1 > span {
+  display: block;
+}
+html[lang="zh-CN"] .cinematic-hero h1 {
+  line-height: 1;
+}
+html[lang="zh-CN"] .cinematic-hero h1 em {
+  margin-top: .12em;
+  line-height: 1;
+}
 .cinematic-copy {
   max-width: 710px;
   margin: 30px auto 0;
