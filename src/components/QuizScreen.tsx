@@ -24,6 +24,8 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
   )
   const answered = selected !== null
   const correct = selected === movie.title
+  const movieDetailsUrl = movie.tmdbUrl
+    ?? `https://www.themoviedb.org/search?query=${encodeURIComponent(movie.originalTitle || movie.title)}`
 
   const selectOption = (option: string) => {
     if (!answered) setSelected(option)
@@ -93,9 +95,20 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
                 <span>{movie.year}</span><span>{movie.region}</span><span>{movie.genres.join(' · ')}</span>
                 {movie.rating !== undefined && <span>TMDB {movie.rating.toFixed(1)}</span>}
               </div>
-              <button className="primary-button next-button" onClick={finish}>
-                {session.currentIndex + 1 === session.mode ? '查看我的段位' : '下一部电影'} <span>→</span>
-              </button>
+              <div className="answer-actions">
+                <a
+                  className="movie-detail-link"
+                  href={movieDetailsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`在 TMDB 查看《${movie.title}》的电影资料（新标签页打开）`}
+                >
+                  <span>了解这部电影</span><small>TMDB ↗</small>
+                </a>
+                <button className="primary-button next-button" onClick={finish}>
+                  {session.currentIndex + 1 === session.mode ? '查看我的段位' : '下一部电影'} <span>→</span>
+                </button>
+              </div>
             </div>
           )}
         </section>
