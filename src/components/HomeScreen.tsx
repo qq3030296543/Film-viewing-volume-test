@@ -15,6 +15,7 @@ interface Props {
   onChooseMode: (mode: TestMode) => void
   onStartSetup: () => void
   onResume: () => void
+  onOpenProfile: () => void
 }
 
 const POSTER_CACHE_KEY = 'cine-home-posters-v1'
@@ -54,6 +55,7 @@ export function HomeScreen({
   onChooseMode,
   onStartSetup,
   onResume,
+  onOpenProfile,
 }: Props) {
   const { language } = useLanguage()
   const en = language === 'en'
@@ -135,6 +137,7 @@ export function HomeScreen({
         <div className="cinematic-nav-links">
           <a className="active" href="#home">{en ? 'Home' : '首页'}</a>
           <a href="#test-config">{en ? 'Test' : '阅历测试'}</a>
+          <button className="nav-text-button" onClick={onOpenProfile}>{en ? 'My Archive' : '阅片档案'}</button>
           {bestResult && <span>{en ? 'Latest' : '最近'} {bestResult.score} {en ? 'pts' : '分'} · {levelLabel(bestResult.playerLevel ?? '略知一二', language)}</span>}
         </div>
         <div className="cinematic-nav-actions">
@@ -193,6 +196,7 @@ export function HomeScreen({
 
       <footer className="cinematic-footer">
         <span>{en ? 'TMDB live database · No sign-in' : 'TMDB 实时片库 · 无需登录'}</span>
+        <button className="cinematic-profile-link" onClick={onOpenProfile}>{en ? 'Open My Cinema Archive' : '打开我的阅片档案'} →</button>
         <span>{historyCount ? (en ? `${historyCount} tests completed` : `已完成 ${historyCount} 场测试`) : (en ? 'Your cinema archive awaits' : '你的银幕档案尚未开启')}</span>
       </footer>
     </main>

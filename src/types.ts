@@ -71,9 +71,66 @@ export interface MoviePerformanceStats extends PerformanceSlice {
   movieId: string
   tmdbId?: number
   title: string
+  year?: number
+  region?: Movie['region']
+  genres?: string[]
   byLevel: Record<PlayerLevel, PerformanceSlice>
   wrongAnswers: Record<string, number>
   lastAnsweredAt: number
+}
+
+export interface ChallengeSummary {
+  score: number
+  correctCount: number
+  correctMovieIds: string[]
+  categoryScores: CategoryScore[]
+}
+
+export interface ChallengeContext {
+  challengeId: string
+  createdAt: number
+  inviter: ChallengeSummary
+}
+
+export interface ChallengePayload extends ChallengeContext {
+  version: 1
+  mode: TestMode
+  category: Category
+  playerLevel: PlayerLevel
+  movies: Movie[]
+}
+
+export interface ChallengeComparison {
+  inviterCorrectCount: number
+  friendCorrectCount: number
+  bothCorrectIds: string[]
+  inviterOnlyIds: string[]
+  friendOnlyIds: string[]
+  inviterTopGenres: string[]
+  friendTopGenres: string[]
+}
+
+export interface ProfileMetric {
+  label: string
+  attempts: number
+  correct: number
+  accuracy: number
+}
+
+export interface ViewingProfile {
+  attempts: number
+  correct: number
+  accuracy: number
+  recognizedMovieCount: number
+  strongestRegion?: ProfileMetric
+  strongestEra?: ProfileMetric
+  strongestGenre?: ProfileMetric
+  weakestGenre?: ProfileMetric
+  highestLevel?: PlayerLevel
+  regionMetrics: ProfileMetric[]
+  eraMetrics: ProfileMetric[]
+  genreMetrics: ProfileMetric[]
+  trend: Array<{ score: number; completedAt: number; playerLevel: PlayerLevel }>
 }
 
 export interface LevelPerformanceSummary extends PerformanceSlice {
@@ -91,6 +148,7 @@ export interface QuizSession {
   currentStreak: number
   bestStreak: number
   startedAt: number
+  challenge?: ChallengeContext
 }
 
 export interface CategoryScore {

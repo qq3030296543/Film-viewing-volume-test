@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { movies } from '../data/movies'
 import { getIdentityAssessment, getRank } from '../data/ranks'
-import type { QuizResult } from '../types'
+import type { ChallengeComparison, QuizResult, QuizSession } from '../types'
 import { getLevelPerformanceSummary } from '../utils/performance'
+import { createChallengeLink } from '../utils/challenge'
 import { RadarChart } from './RadarChart'
 import { TmdbAttribution } from './TmdbAttribution'
 import { genreLabel, levelLabel, useLanguage } from '../i18n'
@@ -10,11 +11,14 @@ import { LanguageSwitch } from './LanguageSwitch'
 
 interface Props {
   result: QuizResult
+  session?: QuizSession
+  comparison?: ChallengeComparison
   onRetry: () => void
   onChangeCategory: () => void
+  onOpenProfile: () => void
 }
 
-export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
+export function ResultScreen({ result, session, comparison, onRetry, onChangeCategory, onOpenProfile }: Props) {
   const { language } = useLanguage()
   const en = language === 'en'
   const playerLevel = result.playerLevel ?? '略知一二'
@@ -22,6 +26,9 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
   const assessment = getIdentityAssessment(result.score, playerLevel, language)
   const levelSummary = useMemo(() => getLevelPerformanceSummary(playerLevel), [playerLevel, result.completedAt])
   const [shareOpen, setShareOpen] = useState(false)
+  const [challengeOpen, setChallengeOpen] = useState(false)
+  const [challengeLink, setChallengeLink] = useState('')
+  const [challengeLoading, setChallengeLoading] = useState(false)
   const [toast, setToast] = useState('')
   const shareCardRef = useRef<HTMLDivElement>(null)
   const strongest = [...result.categoryScores].sort((a, b) => b.score - a.score).find((item) => item.total > 0)
@@ -29,6 +36,52 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
     const preferred = strongest?.label
     return movies.filter((movie) => !preferred || movie.genres.includes(preferred)).slice(0, 4)
   }, [strongest?.label])
+  const titleForMovieId = (movieId: string) => {
+    const movie = session?.movies.find((item) => item.id === movieId)
+    if (!movie) return movieId
+    return en ? (movie.localizedTitles?.en || movie.originalTitle || movie.title) : (movie.localizedTitles?.zh || movie.title)
+  }
+
+  const openChallenge = async () => {
+    if (!session) return
+    setChallengeOpen(true)
+    if (challengeLink) return
+    setChallengeLoading(true)
+    try {
+      setChallengeLink(await createChallengeLink(session, result))
+    } catch {
+      setToast(en ? 'Could not create challenge link' : '暂时无法生成挑战链接')
+    } finally {
+      setChallengeLoading(false)
+    }
+  }
+
+  const copyChallenge = async () => {
+    if (!challengeLink) return
+    try {
+      await navigator.clipboard.writeText(challengeLink)
+      setToast(en ? 'Challenge link copied' : '好友挑战链接已复制')
+    } catch {
+      window.prompt(en ? 'Copy this challenge link:' : '请复制下面的挑战链接：', challengeLink)
+    }
+    window.setTimeout(() => setToast(''), 2200)
+  }
+
+  const shareChallenge = async () => {
+    if (!challengeLink) return
+    const shareApi = (navigator as unknown as { share?: (data: ShareData) => Promise<void> }).share
+    if (!shareApi) { await copyChallenge(); return }
+    try {
+      await shareApi.call(navigator, {
+        title: en ? 'Cine Memory Friend Challenge' : '光影鉴赏局 · 好友同题挑战',
+        text: en ? `I recognized ${result.recognizedCount}/${result.mode} films. Try the exact same set.` : `我在这组电影中答对了 ${result.recognizedCount}/${result.mode} 部，来挑战同一套题吧。`,
+        url: challengeLink,
+      })
+    } catch {
+      setToast(en ? 'Share cancelled' : '已取消分享')
+      window.setTimeout(() => setToast(''), 2200)
+    }
+  }
 
   const shareText = en
     ? `I completed Cine Memory Bureau as a ${levelLabel(playerLevel, language)}, scored ${result.score}, and earned the rank ${rank.name}. Think you can beat it?`
@@ -113,6 +166,21 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
         <div className="score-dial"><span>{result.score}</span><small>/ 100</small><i style={{ '--score': `${result.score * 3.6}deg` } as React.CSSProperties} /></div>
       </section>
 
+      {comparison && <section className="challenge-comparison result-card">
+        <div className="card-heading"><span className="section-index">FRIEND CHALLENGE / {en ? 'SAME FILMS' : '同题对决'}</span><h2>{en ? 'Where Your Cinema Memories Meet' : '你们的电影记忆，在哪里相遇'}</h2></div>
+        <div className="challenge-score-duel">
+          <div><small>{en ? 'CHALLENGE CREATOR' : '挑战发起者'}</small><strong>{comparison.inviterCorrectCount}<i> / {result.mode}</i></strong></div>
+          <span>VS</span>
+          <div><small>{en ? 'YOU' : '你的成绩'}</small><strong>{comparison.friendCorrectCount}<i> / {result.mode}</i></strong></div>
+        </div>
+        <div className="challenge-comparison-grid">
+          <div><small>{en ? 'BOTH CORRECT' : '双方共同答对'}</small><strong>{comparison.bothCorrectIds.length}</strong><p>{comparison.bothCorrectIds.slice(0, 8).map(titleForMovieId).join(en ? ', ' : '、') || (en ? 'None yet' : '暂无')}</p></div>
+          <div><small>{en ? 'CREATOR ONLY' : '只有发起者答对'}</small><strong>{comparison.inviterOnlyIds.length}</strong><p>{comparison.inviterOnlyIds.slice(0, 8).map(titleForMovieId).join(en ? ', ' : '、') || (en ? 'None' : '暂无')}</p></div>
+          <div><small>{en ? 'YOU ONLY' : '只有你答对'}</small><strong>{comparison.friendOnlyIds.length}</strong><p>{comparison.friendOnlyIds.slice(0, 8).map(titleForMovieId).join(en ? ', ' : '、') || (en ? 'None' : '暂无')}</p></div>
+          <div><small>{en ? 'GENRE STRENGTHS' : '双方擅长类型'}</small><strong>◎</strong><p>{en ? 'Creator: ' : '发起者：'}{comparison.inviterTopGenres.map((genre) => genreLabel(genre, language)).join(' · ') || '—'}<br />{en ? 'You: ' : '你：'}{comparison.friendTopGenres.map((genre) => genreLabel(genre, language)).join(' · ') || '—'}</p></div>
+        </div>
+      </section>}
+
       <section className="result-grid">
         <div className="result-card metrics-card">
           <div className="card-heading"><span className="section-index">01 / {en ? 'SCREENING DATA' : '放映数据'}</span><h2>{en ? 'Your Recognition Score' : '你的识片成绩'}</h2></div>
@@ -149,6 +217,8 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
       <div className="result-actions">
         <button className="primary-button" onClick={onRetry}>{en ? 'Test Again' : '再测一次'} <span>↻</span></button>
         <button className="secondary-button" onClick={onChangeCategory}>{en ? 'Change Category' : '换一个类型'}</button>
+        <button className="secondary-button challenge-action-button" onClick={() => void openChallenge()} disabled={!session}>{en ? 'Challenge a Friend' : '好友同题挑战'} <span>↗</span></button>
+        <button className="secondary-button" onClick={onOpenProfile}>{en ? 'My Cinema Archive' : '查看阅片档案'}</button>
         <button className="secondary-button" onClick={() => setShareOpen(true)}>{en ? 'Create Share Card' : '生成分享卡'} <span>↗</span></button>
       </div>
       {result.dataSource === 'tmdb' && <div className="result-attribution"><TmdbAttribution /></div>}
@@ -161,6 +231,18 @@ export function ResultScreen({ result, onRetry, onChangeCategory }: Props) {
             <p>{levelLabel(playerLevel, language)} · {en ? 'Correct' : '猜中'} {result.recognizedCount} · {en ? 'Missed' : '答错'} {result.fuzzyCount} · {en ? 'Streak' : '连胜'} {result.bestStreak}</p><em>{en ? 'One frame awakens a memory of cinema.' : '一张画面，唤醒一段电影记忆。'}</em>
           </div>
           <div className="share-buttons"><button className="primary-button" onClick={downloadCard}>{en ? 'Save Image' : '保存为图片'}</button><button className="secondary-button" onClick={share}>{en ? 'Share Result' : '分享成绩'}</button></div>
+        </div>
+      </div>}
+      {challengeOpen && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={en ? 'Friend challenge link' : '好友挑战链接'}>
+        <div className="share-modal challenge-link-modal">
+          <button className="modal-close" onClick={() => setChallengeOpen(false)} aria-label={en ? 'Close' : '关闭'}>×</button>
+          <span className="section-index">SAME REEL · FRIEND CHALLENGE</span>
+          <h2>{en ? 'Let a friend answer the exact same films.' : '让朋友回答完全相同的电影题目'}</h2>
+          <p>{en ? 'The film set and your result are compressed into the link fragment. No account is required.' : '电影题目与本次成绩会被压缩进链接片段，无需注册，也不会公开你的历史记录。'}</p>
+          <label>{en ? 'Challenge link' : '挑战链接'}
+            <textarea readOnly value={challengeLoading ? (en ? 'Creating link…' : '正在生成链接…') : challengeLink} rows={4} />
+          </label>
+          <div className="share-buttons"><button className="primary-button" onClick={() => void copyChallenge()} disabled={!challengeLink}>{en ? 'Copy Link' : '复制链接'}</button><button className="secondary-button" onClick={() => void shareChallenge()} disabled={!challengeLink}>{en ? 'Share Challenge' : '发送挑战'}</button></div>
         </div>
       </div>}
       {toast && <div className="toast">{toast}</div>}

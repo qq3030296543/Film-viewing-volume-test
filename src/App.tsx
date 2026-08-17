@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DatabaseLoading } from './components/DatabaseLoading'
+import { ChallengeIntro } from './components/ChallengeIntro'
 import { DifficultyScreen } from './components/DifficultyScreen'
 import { HomeScreen } from './components/HomeScreen'
+import { ProfileScreen } from './components/ProfileScreen'
 import { QuizScreen } from './components/QuizScreen'
 import { ResultScreen } from './components/ResultScreen'
 import { createTmdbQuiz, hydrateTmdbMovieArtwork, readTmdbCredential } from './services/tmdb'
-import type { AnswerRecord, Category, PlayerLevel, QuizResult, QuizSession, TestMode } from './types'
+import type { AnswerRecord, Category, ChallengeComparison, ChallengePayload, PlayerLevel, QuizResult, QuizSession, TestMode } from './types'
 import { calculateResult, createQuiz } from './utils/quiz'
 import { recordMoviePerformance } from './utils/performance'
 import { useLanguage } from './i18n'
+import { challengeSession, clearChallengeHash, compareChallenge, readChallengeFromLocation } from './utils/challenge'
 
 const ACTIVE_KEY = 'cine-memory-active-v3'
 const HISTORY_KEY = 'cine-memory-history-v1'
 
-type Screen = 'home' | 'difficulty' | 'loading' | 'quiz' | 'result'
+type Screen = 'home' | 'challenge' | 'difficulty' | 'loading' | 'quiz' | 'profile' | 'result'
 
 const makeDevelopmentPreviewSession = (language: 'zh' | 'en'): QuizSession | null => {
   if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('previewQuiz')) return null
@@ -50,9 +53,22 @@ export default function App() {
   const [session, setSession] = useState<QuizSession | null>(() => previewSession ?? readStorage<QuizSession | null>(ACTIVE_KEY, null))
   const [history, setHistory] = useState<QuizResult[]>(() => readStorage<QuizResult[]>(HISTORY_KEY, []))
   const [result, setResult] = useState<QuizResult | null>(null)
+  const [completedSession, setCompletedSession] = useState<QuizSession | null>(null)
+  const [challengeComparison, setChallengeComparison] = useState<ChallengeComparison | undefined>()
+  const [incomingChallenge, setIncomingChallenge] = useState<ChallengePayload | null>(null)
   const credential = useMemo(() => readTmdbCredential(), [])
   // 不跨身份比较原始分数；首页展示最近一次完整记录。
   const bestResult = history[0]
+
+  useEffect(() => {
+    let cancelled = false
+    void readChallengeFromLocation().then((challenge) => {
+      if (cancelled || !challenge) return
+      setIncomingChallenge(challenge)
+      setScreen('challenge')
+    })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (session) localStorage.setItem(ACTIVE_KEY, JSON.stringify(session))
@@ -121,7 +137,16 @@ export default function App() {
     }
     setSession(next)
     setResult(null)
+    setCompletedSession(null)
+    setChallengeComparison(undefined)
     setScreen('quiz')
+  }
+
+  const discardSession = () => {
+    localStorage.removeItem(ACTIVE_KEY)
+    setSession(null)
+    setResult(null)
+    setScreen('home')
   }
 
   const recordAnswer = (answer: AnswerRecord) => {
@@ -139,8 +164,11 @@ export default function App() {
 
     if (session.currentIndex + 1 >= session.mode) {
       const finalResult = calculateResult(updated)
+      const comparison = compareChallenge(updated, finalResult)
       const nextHistory = [finalResult, ...history].slice(0, 12)
       setResult(finalResult)
+      setCompletedSession(updated)
+      setChallengeComparison(comparison)
       setHistory(nextHistory)
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory))
       localStorage.removeItem(ACTIVE_KEY)
@@ -159,7 +187,33 @@ export default function App() {
         session={session}
         onAnswer={recordAnswer}
         onExit={() => setScreen('home')}
+        onDiscard={discardSession}
         onRestart={() => void startQuiz(session.mode, session.category, session.playerLevel ?? '略知一二', isLocalSession)}
+      />
+    )
+  }
+
+  if (screen === 'challenge' && incomingChallenge) {
+    return (
+      <ChallengeIntro
+        challenge={incomingChallenge}
+        onAccept={() => {
+          clearChallengeHash()
+          const next = challengeSession(incomingChallenge)
+          setMode(next.mode)
+          setCategory(next.category)
+          setPlayerLevel(next.playerLevel)
+          setSession(next)
+          setResult(null)
+          setCompletedSession(null)
+          setChallengeComparison(undefined)
+          setScreen('quiz')
+        }}
+        onBack={() => {
+          clearChallengeHash()
+          setIncomingChallenge(null)
+          setScreen('home')
+        }}
       />
     )
   }
@@ -182,10 +236,16 @@ export default function App() {
 
   if (screen === 'loading') return <DatabaseLoading mode={mode} category={category} playerLevel={playerLevel} />
 
+  if (screen === 'profile') {
+    return <ProfileScreen history={history} onBack={() => setScreen('home')} onStartTest={() => setScreen('difficulty')} />
+  }
+
   if (screen === 'result' && result) {
     return (
       <ResultScreen
         result={result}
+        session={completedSession ?? undefined}
+        comparison={challengeComparison}
         onRetry={() => void startQuiz(result.mode, result.category, result.playerLevel ?? '略知一二', result.dataSource === 'local')}
         onChangeCategory={() => {
           setMode(result.mode)
@@ -193,6 +253,7 @@ export default function App() {
           setPlayerLevel(result.playerLevel ?? '略知一二')
           setScreen('difficulty')
         }}
+        onOpenProfile={() => setScreen('profile')}
       />
     )
   }
@@ -206,6 +267,7 @@ export default function App() {
       onChooseMode={(chosenMode) => { setMode(chosenMode); setScreen('difficulty') }}
       onStartSetup={() => setScreen('difficulty')}
       onResume={() => setScreen('quiz')}
+      onOpenProfile={() => setScreen('profile')}
     />
   )
 }

@@ -13,6 +13,7 @@ interface Props {
   session: QuizSession
   onAnswer: (answer: AnswerRecord) => void
   onExit: () => void
+  onDiscard: () => void
   onRestart: () => void
 }
 
@@ -32,11 +33,12 @@ const clarifyMinimalTitle = (title: string, alternateTitle: string, en: boolean)
   return alternate && alternate !== title ? `${title}（${alternate}）` : title
 }
 
-export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
+export function QuizScreen({ session, onAnswer, onExit, onDiscard, onRestart }: Props) {
   const { language } = useLanguage()
   const en = language === 'en'
   const movie = session.movies[session.currentIndex]
   const [selectedKey, setSelectedKey] = useState<QuizOptionKey | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'exit' | 'restart' | null>(null)
   const answerTitle = en
     ? firstNonBlank(movie.localizedTitles?.en, movie.originalTitle, movie.title, movie.localizedTitles?.zh)
     : firstNonBlank(movie.localizedTitles?.zh, movie.title, movie.originalTitle, movie.localizedTitles?.en)
@@ -96,7 +98,7 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { onExit(); return }
+      if (event.key === 'Escape') { setConfirmAction('exit'); return }
       const digit = Number(event.key)
       if (!answered && digit >= 1 && digit <= 4 && options[digit - 1]) selectOption(options[digit - 1].key)
     }
@@ -116,14 +118,14 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
       <div className="quiz-film-light" aria-hidden="true" />
 
       <header className="quiz-header cinema-quiz-header">
-        <button className="brand-button" onClick={onExit} aria-label={en ? 'Return home' : '返回首页'}>
+        <button className="brand-button" onClick={() => setConfirmAction('exit')} aria-label={en ? 'Return home' : '返回首页'}>
           {en ? 'Cine Memory Bureau' : '光影鉴赏局'}<sup>®</sup>
         </button>
         <ProgressBar current={session.currentIndex + 1} total={session.mode} />
         <div className="quiz-header-actions">
           <LanguageSwitch compact />
-          <button className="liquid-glass" onClick={onExit}>{en ? 'Home' : '返回首页'}</button>
-          <button className="liquid-glass" onClick={onRestart}>{en ? 'Restart' : '重新测试'}</button>
+          <button className="liquid-glass" onClick={() => setConfirmAction('exit')}>{en ? 'Home' : '返回首页'}</button>
+          <button className="liquid-glass" onClick={() => setConfirmAction('restart')}>{en ? 'Restart' : '重新测试'}</button>
         </div>
       </header>
 
@@ -179,6 +181,25 @@ export function QuizScreen({ session, onAnswer, onExit, onRestart }: Props) {
         <span>{levelLabel(session.playerLevel ?? '略知一二', language)} · QUESTION {session.currentIndex + 1} / {session.mode}</span>
         {movie.source === 'tmdb' ? <TmdbAttribution compact /> : <span>{en ? 'ESC HOME · 1—4 SELECT' : 'ESC 返回首页 · 1—4 选择答案'}</span>}
       </footer>
+
+      {confirmAction && <div className="modal-backdrop exit-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="exit-confirm-title">
+        <div className="exit-confirm-modal liquid-glass">
+          <span className="section-index">CURRENT REEL · {String(session.currentIndex + 1).padStart(2, '0')} / {session.mode}</span>
+          <h2 id="exit-confirm-title">{confirmAction === 'restart'
+            ? (en ? 'Restart this screening?' : '要重新开始这场测试吗？')
+            : (en ? 'Return to the home screen?' : '当前进度将保留，要返回首页吗？')}</h2>
+          <p>{confirmAction === 'restart'
+            ? (en ? 'Your completed answers are saved. Restarting will discard this unfinished session.' : '已完成的答题进度已经保存；重新测试会放弃本次未完成的场次。')
+            : (en ? 'You can resume this test later, or discard it and start fresh.' : '稍后可以从首页继续，也可以放弃本次测试并重新开始。')}</p>
+          <div className="exit-confirm-actions">
+            <button className="primary-button" onClick={onExit}>{en ? 'Save & Return' : '保存并返回'}</button>
+            <button className="danger-button" onClick={confirmAction === 'restart' ? onRestart : onDiscard}>
+              {confirmAction === 'restart' ? (en ? 'Discard & Restart' : '放弃并重新测试') : (en ? 'Discard This Test' : '放弃本次测试')}
+            </button>
+            <button className="secondary-button" onClick={() => setConfirmAction(null)}>{en ? 'Keep Answering' : '继续答题'}</button>
+          </div>
+        </div>
+      </div>}
     </main>
   )
 }

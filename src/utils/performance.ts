@@ -5,6 +5,8 @@ import type {
   MoviePerformanceStats,
   PerformanceSlice,
   PlayerLevel,
+  QuizResult,
+  ViewingProfile,
 } from '../types'
 
 const PERFORMANCE_KEY = 'cine-movie-performance-v1'
@@ -24,6 +26,9 @@ const normalizeStats = (movieId: string, value: Partial<MoviePerformanceStats>):
   movieId,
   tmdbId: typeof value.tmdbId === 'number' ? value.tmdbId : undefined,
   title: typeof value.title === 'string' ? value.title : movieId,
+  year: Number.isFinite(value.year) ? Number(value.year) : undefined,
+  region: value.region,
+  genres: Array.isArray(value.genres) ? value.genres.filter((genre): genre is string => typeof genre === 'string') : [],
   attempts: Number.isFinite(value.attempts) ? Math.max(0, Number(value.attempts)) : 0,
   correct: Number.isFinite(value.correct) ? Math.max(0, Number(value.correct)) : 0,
   byLevel: playerLevels.reduce((result, level) => {
@@ -72,6 +77,9 @@ export const recordMoviePerformance = (
       ...current,
       tmdbId: movie.tmdbId ?? current.tmdbId,
       title: movie.title,
+      year: movie.year,
+      region: movie.region,
+      genres: movie.genres,
       attempts: current.attempts + 1,
       correct: current.correct + (answer.recognized ? 1 : 0),
       byLevel: {
@@ -101,5 +109,81 @@ export const getLevelPerformanceSummary = (playerLevel: PlayerLevel): LevelPerfo
     correct,
     accuracy: attempts ? Math.round((correct / attempts) * 100) : 0,
     movieCount: slices.length,
+  }
+}
+
+const metricFromSlices = (label: string, slices: MoviePerformanceStats[]) => {
+  const attempts = slices.reduce((sum, item) => sum + item.attempts, 0)
+  const correct = slices.reduce((sum, item) => sum + item.correct, 0)
+  return {
+    label,
+    attempts,
+    correct,
+    accuracy: attempts ? Math.round((correct / attempts) * 100) : 0,
+  }
+}
+
+const rankMetrics = (metrics: ReturnType<typeof metricFromSlices>[]) => [...metrics]
+  .filter((metric) => metric.attempts > 0)
+  .sort((left, right) => right.accuracy - left.accuracy || right.attempts - left.attempts)
+
+const eraLabel = (year?: number) => {
+  if (!year) return '未知年代'
+  if (year < 1960) return '1960 年以前'
+  if (year < 1980) return '1960—1979'
+  if (year < 2000) return '1980—1999'
+  if (year < 2015) return '2000—2014'
+  return '2015 至今'
+}
+
+const groupMetrics = (
+  stats: MoviePerformanceStats[],
+  labelsFor: (item: MoviePerformanceStats) => string[],
+) => {
+  const groups = new Map<string, MoviePerformanceStats[]>()
+  stats.forEach((item) => {
+    labelsFor(item).forEach((label) => groups.set(label, [...(groups.get(label) ?? []), item]))
+  })
+  return [...groups.entries()].map(([label, slices]) => metricFromSlices(label, slices))
+}
+
+export const getViewingProfile = (history: QuizResult[]): ViewingProfile => {
+  const stats = Object.values(readPerformanceStore()).filter((item) => item.attempts > 0)
+  const attempts = stats.reduce((sum, item) => sum + item.attempts, 0)
+  const correct = stats.reduce((sum, item) => sum + item.correct, 0)
+  const regionMetrics = groupMetrics(stats, (item) => item.region ? [item.region] : [])
+  const eraMetrics = groupMetrics(stats, (item) => [eraLabel(item.year)])
+  const genreMetrics = groupMetrics(stats, (item) => item.genres ?? [])
+  const strongestRegion = rankMetrics(regionMetrics)[0]
+  const strongestEra = rankMetrics(eraMetrics)[0]
+  const strongestGenre = rankMetrics(genreMetrics)[0]
+  const weakestGenre = [...genreMetrics]
+    .filter((metric) => metric.attempts > 0)
+    .sort((left, right) => left.accuracy - right.accuracy || right.attempts - left.attempts)[0]
+  const levelOrder: PlayerLevel[] = ['入门菜鸟', '略知一二', '阅片无数']
+  const highestLevel = history.reduce<PlayerLevel | undefined>((highest, result) => {
+    const level = result.playerLevel ?? '略知一二'
+    if (!highest || levelOrder.indexOf(level) > levelOrder.indexOf(highest)) return level
+    return highest
+  }, undefined)
+
+  return {
+    attempts,
+    correct,
+    accuracy: attempts ? Math.round((correct / attempts) * 100) : 0,
+    recognizedMovieCount: stats.filter((item) => item.correct > 0).length,
+    strongestRegion,
+    strongestEra,
+    strongestGenre,
+    weakestGenre,
+    highestLevel,
+    regionMetrics: rankMetrics(regionMetrics),
+    eraMetrics: rankMetrics(eraMetrics),
+    genreMetrics: rankMetrics(genreMetrics),
+    trend: history.slice(0, 12).reverse().map((result) => ({
+      score: result.score,
+      completedAt: result.completedAt,
+      playerLevel: result.playerLevel ?? '略知一二',
+    })),
   }
 }
