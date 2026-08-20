@@ -1,5 +1,44 @@
 import type { Movie } from '../types'
 
+// Keep local fallback questions connected to their exact TMDB movie pages.
+// This map is also used by the quiz screen to migrate unfinished sessions that
+// were saved in localStorage before local movies carried a `tmdbId` field.
+export const localTmdbMovieIds: Readonly<Record<string, number>> = {
+  'farewell-my-concubine': 10997,
+  'infernal-affairs': 10775,
+  hero: 79,
+  'yi-yi': 25538,
+  'to-live': 31439,
+  'kung-fu-hustle': 9470,
+  'let-the-bullets-fly': 51533,
+  'eat-drink-man-woman': 10451,
+  'in-the-mood-for-love': 843,
+  'havoc-in-heaven': 47759,
+  inception: 27205,
+  interstellar: 157336,
+  'the-matrix': 603,
+  shawshank: 278,
+  'the-godfather': 238,
+  'truman-show': 37165,
+  'grand-budapest': 120467,
+  'get-out': 419430,
+  'the-shining': 694,
+  alien: 348,
+  '2001': 62,
+  'la-la-land': 313369,
+  parasite: 496243,
+  'spirited-away': 129,
+  'your-name': 372058,
+  'memories-of-murder': 11423,
+  oldboy: 670,
+  'seven-samurai': 346,
+  'tokyo-story': 18148,
+  'my-neighbor-totoro': 8392,
+  'the-ring': 2671,
+  'perfect-blue': 10494,
+  'cinema-paradiso': 11216,
+}
+
 // 海报链接使用 TMDB 公共图片 CDN；应用不依赖 API，图片失效时会自动显示本地电影感占位视觉。
 const movieSeed: Movie[] = [
   {
@@ -211,6 +250,7 @@ export const movies: Movie[] = movieSeed
   .map((movie) => ({
     ...movie,
     source: 'local',
+    tmdbId: localTmdbMovieIds[movie.id],
     imageUrl: `${baseUrl}posters/${movie.id}.jpg`,
     imageUrls: [movie.imageUrl],
     // 不把片名写入无障碍文本，避免读屏或图片提示提前泄题。

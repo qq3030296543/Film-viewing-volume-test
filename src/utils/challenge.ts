@@ -10,6 +10,9 @@ import type {
 
 const CHALLENGE_VERSION = 1 as const
 const VALID_MODES: TestMode[] = [10, 20, 30]
+const CHALLENGE_API_BASE = '/api/challenges'
+const SHORT_CODE_PATTERN = /^[A-Za-z0-9_-]{16}$/
+const REQUEST_TIMEOUT_MS = 8_000
 
 const bytesToBase64Url = (bytes: Uint8Array) => {
   let binary = ''
@@ -97,11 +100,35 @@ export const createChallengePayload = (session: QuizSession, result: QuizResult)
 
 export const createChallengeLink = async (session: QuizSession, result: QuizResult) => {
   const payload = createChallengePayload(session, result)
-  const encoded = await compress(JSON.stringify(payload))
   const url = new URL(window.location.href)
   url.search = ''
-  url.hash = `challenge=${encoded}`
-  return url.toString()
+  url.hash = ''
+
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(CHALLENGE_API_BASE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(`Challenge API returned ${response.status}`)
+    const body = await response.json() as { code?: unknown }
+    if (typeof body.code !== 'string' || !SHORT_CODE_PATTERN.test(body.code)) {
+      throw new Error('Challenge API returned an invalid code')
+    }
+    url.searchParams.set('challenge', body.code)
+    return url.toString()
+  } catch {
+    // Plain Vite development has no Netlify Function. Keep a fully offline fallback
+    // so challenge creation still works when the short-link service is unavailable.
+    const encoded = await compress(JSON.stringify(payload))
+    url.hash = `challenge=${encoded}`
+    return url.toString()
+  } finally {
+    window.clearTimeout(timeout)
+  }
 }
 
 const isChallengePayload = (value: unknown): value is ChallengePayload => {
@@ -120,6 +147,23 @@ const isChallengePayload = (value: unknown): value is ChallengePayload => {
 
 export const readChallengeFromLocation = async (): Promise<ChallengePayload | null> => {
   try {
+    const shortCode = new URL(window.location.href).searchParams.get('challenge')
+    if (shortCode && SHORT_CODE_PATTERN.test(shortCode)) {
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+      try {
+        const response = await fetch(`${CHALLENGE_API_BASE}/${encodeURIComponent(shortCode)}`, {
+          headers: { accept: 'application/json' },
+          signal: controller.signal,
+        })
+        if (!response.ok) return null
+        const parsed = await response.json() as unknown
+        return isChallengePayload(parsed) ? parsed : null
+      } finally {
+        window.clearTimeout(timeout)
+      }
+    }
+
     const match = window.location.hash.match(/^#challenge=(.+)$/)
     if (!match) return null
     const json = await decompress(match[1])
@@ -174,6 +218,11 @@ export const compareChallenge = (session: QuizSession, result: QuizResult): Chal
 }
 
 export const clearChallengeHash = () => {
-  if (!window.location.hash.startsWith('#challenge=')) return
-  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+  const url = new URL(window.location.href)
+  const hasShortChallenge = url.searchParams.has('challenge')
+  const hasLegacyChallenge = url.hash.startsWith('#challenge=')
+  if (!hasShortChallenge && !hasLegacyChallenge) return
+  url.searchParams.delete('challenge')
+  url.hash = ''
+  window.history.replaceState(null, '', `${url.pathname}${url.search}`)
 }

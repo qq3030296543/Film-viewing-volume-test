@@ -8,6 +8,7 @@ import { ResilientPosterImage } from './ResilientPosterImage'
 import { TmdbAttribution } from './TmdbAttribution'
 import { difficultyLabel, genreLabel, levelLabel, regionLabel, useLanguage } from '../i18n'
 import { LanguageSwitch } from './LanguageSwitch'
+import { localTmdbMovieIds } from '../data/movies'
 
 interface Props {
   session: QuizSession
@@ -82,9 +83,10 @@ export function QuizScreen({ session, onAnswer, onExit, onDiscard, onRestart }: 
   )
   const answered = selectedKey !== null
   const correct = selectedKey === 'answer'
-  const movieDetailsUrl = movie.tmdbId
-    ? `https://www.themoviedb.org/movie/${movie.tmdbId}?language=${en ? 'en-US' : 'zh-CN'}`
-    : `https://www.themoviedb.org/search?query=${encodeURIComponent(movie.originalTitle || movie.title)}&language=${en ? 'en-US' : 'zh-CN'}`
+  const resolvedTmdbId = movie.tmdbId ?? localTmdbMovieIds[movie.id]
+  const movieDetailsUrl = resolvedTmdbId
+    ? `https://www.themoviedb.org/movie/${resolvedTmdbId}?language=${en ? 'en-US' : 'zh-CN'}`
+    : undefined
 
   const selectOption = (optionKey: QuizOptionKey) => {
     if (!answered) setSelectedKey(optionKey)
@@ -159,16 +161,16 @@ export function QuizScreen({ session, onAnswer, onExit, onDiscard, onRestart }: 
                 <span>{movie.year}</span><span>{regionLabel(movie.region, language)}</span><span>{movie.genres.map((genre) => genreLabel(genre, language)).join(' · ')}</span>
                 {movie.rating !== undefined && <span>TMDB {movie.rating.toFixed(1)}</span>}
               </div>
-              <a
-                className="movie-detail-link"
-                href={movieDetailsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={en ? `View ${answerTitle} on TMDB in a new tab` : `在 TMDB 查看《${answerTitle}》的电影资料（新标签页打开）`}
-              >
-                <span><small>{en ? 'FILM DETAILS · OFFICIAL LINK' : '电影详细资料 · OFFICIAL LINK'}</small><strong>{en ? `View “${answerTitle}” on TMDB` : `在 TMDB 查看《${answerTitle}》`}</strong></span>
-                <em>themoviedb.org ↗</em>
-              </a>
+              {movieDetailsUrl && <a
+                  className="movie-detail-link"
+                  href={movieDetailsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={en ? `View ${answerTitle} on TMDB in a new tab` : `在 TMDB 查看《${answerTitle}》的电影资料（新标签页打开）`}
+                >
+                  <span><small>{en ? 'FILM DETAILS · OFFICIAL LINK' : '电影详细资料 · OFFICIAL LINK'}</small><strong>{en ? `View “${answerTitle}” on TMDB` : `在 TMDB 查看《${answerTitle}》`}</strong></span>
+                  <em>themoviedb.org ↗</em>
+                </a>}
               <button className="primary-button next-button" onClick={finish}>
                 {session.currentIndex + 1 === session.mode ? (en ? 'Reveal My Rank' : '查看我的段位') : (en ? 'Next Film' : '下一部电影')} <span>→</span>
               </button>
